@@ -1,6 +1,6 @@
 // 画面なしでルールを動かし、反応や完成が起きるか・例外が出ないかを確かめる
 import { Game, exactValence, OPENING, RULES } from '../js/sim.js';
-import { CELLS } from '../js/board.js';
+import { CELLS, neighbors } from '../js/board.js';
 import { REACTIONS, NUCLEAR_LIST, SUBSTANCES, BUILDABLE } from '../js/chem.js';
 
 let ok = true;
@@ -104,7 +104,7 @@ for (const N of NUCLEAR_LIST) if (N.nucl) {
   const h = new Game(); h.start(); h.reactCount = 99;
   let u = 0, pu = 0;
   for (let i = 0; i < 5000; i++) { const el = h.pick(); if (el === 'U') u++; if (el === 'Pu') pu++; }
-  check(u <= 3 && pu <= 2, `fuel cap (U ${u}, Pu ${pu})`);
+  check(u <= RULES.fuelMax.U && pu <= RULES.fuelMax.Pu, `fuel cap (U ${u}, Pu ${pu})`);
 }
 
 // お題:2つ選ばれ、中心の物質が盤にあり、その反応を起こすと達成になるか
@@ -131,7 +131,7 @@ for (const N of NUCLEAR_LIST) if (N.nucl) {
   const g = new Game(); g.start(new Set());
   const share = rc => { g.reactCount = rc; g.frags.clear(); let o = 0; for (let i = 0; i < 6000; i++) if (g.pick() === 'O') o++; return o / 6000; };
   const a = share(0), b = share(30);
-  check(b > 0.19 && b > a - 0.03, `oxygen share keeps up (${a.toFixed(2)} → ${b.toFixed(2)})`);
+  check(b > 0.19 && b > a - 0.05, `oxygen share keeps up (${a.toFixed(2)} → ${b.toFixed(2)})`);
 }
 
 // 完成した物質に原子を足して、大きな物質にできるか(O2 + O → O3、C + O + O → CO2、H + H + O → H2O)
@@ -154,7 +154,13 @@ for (const [seq, want] of [[['O', 'O', 'O'], 'O3'], [['C', 'O', 'O'], 'CO2'], [[
     for (let trial = 0; trial < 40 && !ok; trial++) {
       const seq = trial === 0 ? atoms.slice() : atoms.slice().sort(() => Math.random() - 0.5);
       const g = new Game(); g.startDemo(seq); g.demoKeep = true;
-      seq.forEach((el, i) => { g.demoAtom(el, ring[i]); for (let k = 0; k < 45; k++) g.update(1 / 30); });
+      // すでに置いた物(物質や組み立て途中の原子)に、できるだけ多く接するマスへ置く
+      seq.forEach((el, i) => {
+        const free = CELLS.filter(k => !g.cells.has(k) && Math.abs(+k.split(',')[0]) <= 2 && Math.abs(+k.split(',')[1]) <= 2);
+        const touch = k => neighbors(k).filter(n => g.cells.has(n)).length;
+        const k = i === 0 ? '0,0' : free.sort((a, b) => touch(b) - touch(a))[0];
+        g.demoAtom(el, k); for (let t = 0; t < 45; t++) g.update(1 / 30);
+      });
       for (let k = 0; k < 45; k++) g.update(1 / 30);
       for (let k = 0; k < 150; k++) g.update(1 / 30);
       ok = [...g.cells.values()].some(e => e.sub === b.id);

@@ -247,3 +247,10 @@ button:focus-visible { outline: 1px solid var(--heat); outline-offset: 2px; posi
 .coach-hide input { accent-color: var(--cream); width: 15px; height: 15px; margin: 0; }
 :root.tutoring .tray { visibility: hidden; }
 :root.tutoring .event { margin-bottom: 196px; }
+
+/* 一時停止 */
+#pause { background: rgba(37, 46, 54, .9); }
+#pause .lbl { text-align: center; }
+.pause-info { text-align: center; color: var(--dim); font-size: 12px; margin: 0 0 24px; font-variant-numeric: tabular-nums; }
+.pause-note { text-align: center; color: var(--dim); font-size: 11px; margin: 14px 0 0; }
+#pauseBtn { min-width: 46px; }

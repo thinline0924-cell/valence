@@ -29,12 +29,12 @@ export const RULES = {
   openingGuard: 20,   // 始まってこの秒数は、見本の連鎖のまわりに物を置かない
   reagent: 9,         // 試薬の補給の間隔(秒)。反応の回数が増えるほど、補給される物質の種類が広がる
   flameAt: 150,       // この熱量(kJ)以上の発熱反応は炎を出し、となりの燃えるものに点火する
-  nuclearAfter: 12,   // ウランとプルトニウムが出はじめるまでの反応の回数
+  nuclearAfter: 9,    // ウランが出はじめるまでの反応の回数(プルトニウムは ELEMENTS の after)
   targetPts: 500,     // お題の反応を起こしたときの得点
   targetHelp: 0.5,    // 試薬の補給のうち、お題の材料を中心のとなりに落とす割合
   fissionPts: 2000,   // 核分裂1回の基本点
   fissionDecay: 0.6,  // 同じゲームで核分裂を重ねるたびに、得点にかける倍率
-  fuelMax: { U: 3, Pu: 2 }, // 1ゲームで出てくるウラン・プルトニウムの数の上限
+  fuelMax: { U: 4, Pu: 2 }, // 1ゲームで出てくるウラン・プルトニウムの数の上限
   spentLife: 15,      // 使い終わった燃料(核分裂生成物)がマスをふさぐ時間(秒)
   diffuse: 0.35,      // 気体が隣へ動く確率(1秒あたり、空気と同じ重さのとき)。軽いほど速い(グレアムの法則)
 };
@@ -50,7 +50,7 @@ export class Game {
     this.known = known;
     Object.assign(this, { demo: false, reserved: null,
       t: 0, time: RULES.time, score: 0, heat: 0, fever: 0, chain: 0, maxChain: 0,
-      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(), lateCount: { U: 0, Pu: 0 }, fissions: 0, targets: [], lastLearn: -99,
+      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(), lateCount: { U: 0, Pu: 0 }, fissions: 0, forced: [], fuelBuilt: 0, targets: [], lastLearn: -99,
       over: false, found: new Set(), reactCount: 0, lastHeatHint: -99, pauseLeft: 0, seen: new Map(),
     });
   }
@@ -235,6 +235,10 @@ export class Game {
     const pts = 10 * frag.atoms.length * (this.feverOn ? 2 : 1);
     this.score += pts;
     this.emit('complete', { id: e.id, sub: subId, key, atoms: frag.atoms.map(a => ({ id: a.id, key: a.key })), edges: frag.edges, pts });
+    if (SUBSTANCES[subId].fuel) {
+      // 燃料が1つできたら、2つ目の材料も配る。2つ並べて水に接すると核分裂する
+      if (++this.fuelBuilt === 1) this.emit('guideNote', { text: 'もう1つ燃料を2マス以内に作り、水に接すると核分裂する' });
+    }
     this.learn(subId);
   }
 
@@ -247,6 +251,8 @@ export class Game {
 
   /* ---------- 原子の配り方(重み付き) ---------- */
   pick() {
+    // 決めておいた順番で配る原子(核燃料の案内:ウランと酸素2つ)
+    if (this.forced && this.forced.length) return this.counted(this.forced.shift());
     if (this.frags && this.frags.size && Math.random() < RULES.bias) {
       const want = new Set();
       for (const f of this.frags.values()) {
@@ -275,7 +281,7 @@ export class Game {
   }
   // 元素は反応の回数(after)に応じて出はじめる。ウランとプルトニウムは数にも上限がある
   elOk(el) { const e = ELEMENTS[el]; if (e.late) return this.lateOk(el); return !e.after || (this.cells && this.reactCount >= e.after); }
-  lateOk(el) { return this.cells && this.nuclearOpen && this.lateCount[el] < RULES.fuelMax[el]; }
+  lateOk(el) { const e = ELEMENTS[el]; return this.cells && this.nuclearOpen && (!e.after || this.reactCount >= e.after) && this.lateCount[el] < RULES.fuelMax[el]; }
   counted(el) { if (ELEMENTS[el].late) this.lateCount[el]++; return el;
   }
 
@@ -359,12 +365,17 @@ export class Game {
     this.checkTarget(R.id, keys[0]);
     for (const p of products) this.learn(p.sub);
     for (const [el, e] of Object.entries(ELEMENTS)) if (e.after === this.reactCount) this.emit('unlock', { els: [el] });
-    if (this.reactCount === RULES.nuclearAfter) this.emit('unlock', { els: ['U', 'Pu'] });
+    if (this.reactCount === RULES.nuclearAfter) {
+      // 核の入り口:ウランと酸素2つを続けて配り、燃料の作り方を知らせる
+      this.forced.push('U', 'O', 'O', 'U', 'O', 'O');
+      this.emit('unlock', { els: ['U'] });
+      this.emit('guideNote', { text: 'ウランに酸素を2つつなげると核燃料。燃料2つを近くに置き、水に接すると核分裂する' });
+    }
   }
 
   /* ---------- 核分裂 ----------
      燃料(UO2・PuO2)のペレットが、水(中性子の減速材)に接していて、
-     別の燃料に接しているか、となりの核分裂で中性子を受けていると核分裂する。
+     2マス以内に別の燃料があるか、近くの核分裂で中性子を受けていると核分裂する。
      中性子を受けても水に接していない UO2 は、ウラン238が中性子を吸収してプルトニウムに変わる */
   findNuclear() {
     const out = [];
@@ -372,7 +383,8 @@ export class Game {
       if (e.kind !== 'sub' || !SUBSTANCES[e.sub].fuel || e.readyAt > this.t) continue;
       const nb = neighbors(k).map(n => this.cells.get(n)).filter(Boolean);
       const water = nb.some(x => x.sub === 'H2O');
-      const fuel = nb.some(x => x.kind === 'sub' && SUBSTANCES[x.sub].fuel);
+      // 中性子は2マス先の燃料まで届く
+      const fuel = within2(k).some(n => { const x = this.cells.get(n); return x && x.kind === 'sub' && SUBSTANCES[x.sub].fuel; });
       if (water && (fuel || e.irr)) out.push({ type: 'fission', key: k });
       else if (e.irr && e.sub === 'UO2') out.push({ type: 'breed', key: k });
       e.irr = false;
@@ -392,8 +404,8 @@ export class Game {
     const free = neighbors(key).filter(k => !this.cells.has(k));
     if (free.length) { const g = this.addSub(N.gas, free[Math.floor(Math.random() * free.length)], this.t + delay); products.push({ id: g.id, sub: N.gas, key: g.key }); }
     else escapes.push(N.gas);
-    // 中性子がとなりの燃料に届く
-    for (const n of neighbors(key)) { const x = this.cells.get(n); if (x && x.kind === 'sub' && SUBSTANCES[x.sub].fuel) x.irr = true; }
+    // 中性子が2マス先までの燃料に届く
+    for (const n of within2(key)) { const x = this.cells.get(n); if (x && x.kind === 'sub' && SUBSTANCES[x.sub].fuel) x.irr = true; }
     this.nextFlames.add(key);
     this.addHeat(RULES.heatMax);
     // 切り札だが、核分裂だけで稼げないように:重ねるほど得点が下がり、連鎖の倍率は2倍まで
@@ -618,6 +630,8 @@ export function exactValence(atoms, edges) {
   return go(0);
 }
 
+// 2マス以内のマス(自分は除く)
+const within2 = k => [...new Set(neighbors(k).flatMap(n => [n, ...neighbors(n)]))].filter(n => n !== k);
 const BUILT = new Map(BUILDABLE.map(b => [b.id, b.counts]));
 const fitsSome = counts => BUILDABLE.some(b => Object.entries(counts).every(([e, c]) => (b.counts[e] || 0) >= c));
 const sameCounts = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => a[k] === b[k]);

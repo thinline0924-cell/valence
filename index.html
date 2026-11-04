@@ -36,7 +36,7 @@
       <div><span class="lbl">次の原子</span><div class="tiles" id="tiles"></div></div>
       <div class="ctrl">
         <div class="seg" role="group" aria-label="盤を回す">
-          <button id="rotL" aria-label="盤を左に回す">‹</button><button id="rotR" aria-label="盤を右に回す">›</button>
+          <button id="rotL" aria-label="盤を左に回す">‹</button><button id="rotR" aria-label="盤を右に回す">›</button><button id="pauseBtn">中断</button>
         </div>
         <div class="seg">
           <button id="nameBtn" aria-pressed="false">名前</button><button id="caseBtn" aria-pressed="false">ケース</button><button id="soundBtn" aria-pressed="true">音</button>
@@ -54,7 +54,7 @@
         <li><b>完成</b>つながった原子の組み合わせが実在の物質と同じになると、その姿に変わる。もっと大きな物質になれるときは、少し待ってから完成する</li>
         <li><b>反応</b>となり合った物質は、条件がそろうと反応する。生成物がさらに反応すると連鎖になり、その間は時計が止まる</li>
         <li><b>熱</b>発熱反応で熱がたまる。加熱マスでは熱を使って吸熱反応が起こせる。満タンになると過熱になり、反応が速く、得点は2倍。大きな燃焼の炎は、となりの燃えるものに燃え移る</li>
-        <li><b>核</b>反応を重ねると、ウランとプルトニウムが出はじめる。二酸化ウランなどの燃料を2つ並べて水に接すると核分裂し、中性子がとなりの燃料に届いて連鎖する。使い終わった燃料はしばらくマスをふさぐ</li>
+        <li><b>核</b>反応を9回起こすと、ウランが出はじめる。ウランに酸素を2つつなげると燃料。燃料を2マス以内に2つ置き、水に接すると核分裂して連鎖する。使い終わった燃料はしばらくマスをふさぐ</li>
       </ol>
       <dl class="cells">
         <div><dt class="c-heat"></dt><dd>加熱 点火と吸熱反応</dd></div>
@@ -100,6 +100,17 @@
         <div class="coach-nav"><button id="tutBack">戻る</button><button id="tutNext" class="primary">次へ</button></div>
       </div>
       <label class="coach-hide"><input type="checkbox" id="tutHide"> 次回から表示しない(開始画面の「遊び方」でいつでも見られます)</label>
+    </div>
+  </section>
+
+  <section class="screen" id="pause" hidden aria-label="一時停止">
+    <div class="sheet">
+      <p class="lbl">一時停止</p>
+      <p class="rscore" id="pScore">0</p>
+      <p class="pause-info" id="pInfo"></p>
+      <button class="go" id="resumeBtn">再開</button>
+      <div class="btn-row"><button class="sub-btn" id="restartBtn">最初からやり直す</button><button class="sub-btn" id="quitBtn">やめて開始画面へ</button></div>
+      <p class="pause-note" id="pNote">やめた回の点数は、ランキングに記録されません</p>
     </div>
   </section>
 

@@ -147,16 +147,51 @@ toggle($('caseBtn'), v => { view.caseGroup.visible = v; });
 toggle($('soundBtn'), v => audio.setOn(v));
 $('rotL').onclick = () => view.rotate(-1);
 $('rotR').onclick = () => view.rotate(1);
-addEventListener('keydown', e => { if (e.key === 'ArrowLeft') view.rotate(-1); if (e.key === 'ArrowRight') view.rotate(1); });
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') view.rotate(-1);
+  if (e.key === 'ArrowRight') view.rotate(1);
+  if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') paused ? resume() : pause();
+});
+
+/* ---------- 一時停止・やめる ---------- */
+let paused = false;
+const playing = () => !game.over && !game.demo;
+function pause() {
+  if (!playing() || paused) return;
+  paused = true;
+  audio.play('ui'); audio.music(null);
+  $('pScore').textContent = game.score.toLocaleString('en-US');
+  const left = Math.ceil(game.time);
+  $('pInfo').textContent = `残り ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}  連鎖の最高 ×${game.maxChain}`;
+  $('pause').hidden = false;
+  $('resumeBtn').focus();
+}
+function resume() {
+  if (!paused) return;
+  paused = false; prev = performance.now();
+  audio.play('ui'); audio.music(game.feverOn ? 'fever' : 'main');
+  $('pause').hidden = true;
+}
+$('pauseBtn').onclick = pause;
+$('resumeBtn').onclick = resume;
+$('restartBtn').onclick = () => { paused = false; $('pause').hidden = true; audio.music(null); start(); };
+$('quitBtn').onclick = () => {
+  paused = false; $('pause').hidden = true;
+  audio.play('ui'); audio.music(null);
+  game.over = true; game.emit('start');   // 盤を片付ける(結果は出さず、ランキングにも記録しない)
+  $('title').hidden = false;
+};
+// ほかのアプリに切り替えたときや画面を消したときは、自動で止める
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
 let prev = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
-  game.update(dt);
+  if (!paused) game.update(dt);
   if (!game.over && game.time < 10 && !game.paused) {
     const s = Math.ceil(game.time); if (s !== lastTick) { lastTick = s; audio.play('tick'); }
   }
-  view.update(dt, game);
+  view.update(paused ? 0 : dt, game);
   hud.update(game);
   requestAnimationFrame(frame);
 }

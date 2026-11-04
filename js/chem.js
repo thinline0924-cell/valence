@@ -2,29 +2,29 @@
 // 熱量は 25 °C・1 bar の標準生成エンタルピー(NBS 化学熱力学表)から計算し、整数に丸めた値。
 // 単純化の方針は docs/chemistry.md にまとめている。
 
-// v:結合の手の数(原子価) w:出やすさ(重み) late:反応を何回か起こしてから出はじめる
+// v:結合の手の数(原子価) w:出やすさ(重み) after:反応を何回起こすと出はじめるか(2種類ずつ増える) late:核燃料(数に上限)
 export const ELEMENTS = {
   H:  { z: 1,  v: 1, mass: '1.008',  col: '#efe6d3', ink: '#2f3a44', w: 22, name: '水素' },
   C:  { z: 6,  v: 4, mass: '12.011', col: '#2a3138', ink: '#efe6d3', w: 10, name: '炭素' },
   N:  { z: 7,  v: 3, mass: '14.007', col: '#3f7fd0', ink: '#f3efe6', w: 8,  name: '窒素' },
   O:  { z: 8,  v: 2, mass: '15.999', col: '#e0583a', ink: '#fff3e6', w: 20, name: '酸素' },
   Na: { z: 11, v: 1, mass: '22.990', col: '#9fb6c3', ink: '#2f3a44', w: 8,  name: 'ナトリウム' },
-  S:  { z: 16, v: 2, mass: '32.06',  col: '#e8cf45', ink: '#2f3a44', w: 6,  name: '硫黄' },
+  S:  { z: 16, v: 2, mass: '32.06',  col: '#e8cf45', ink: '#2f3a44', w: 6, after: 4,  name: '硫黄' },
   Cl: { z: 17, v: 1, mass: '35.45',  col: '#b8cc3c', ink: '#2f3a44', w: 11, name: '塩素' },
-  Ca: { z: 20, v: 2, mass: '40.078', col: '#b5a79a', ink: '#2f3a44', w: 6,  name: 'カルシウム' },
-  Mg: { z: 12, v: 2, mass: '24.305', col: '#cfd8dc', ink: '#2f3a44', w: 5, after: 5, name: 'マグネシウム' },
-  K:  { z: 19, v: 1, mass: '39.098', col: '#8faa6a', ink: '#1f2a20', w: 5, after: 5, name: 'カリウム' },
-  F:  { z: 9,  v: 1, mass: '18.998', col: '#d9e58a', ink: '#2f3a44', w: 4, after: 5, name: 'フッ素' },
-  Br: { z: 35, v: 1, mass: '79.904', col: '#9a3b26', ink: '#f6e9dc', w: 4, after: 5, name: '臭素' },
-  Al: { z: 13, v: 3, mass: '26.982', col: '#a9b3ba', ink: '#2f3a44', w: 4, after: 12, name: 'アルミニウム' },
-  Si: { z: 14, v: 4, mass: '28.085', col: '#5f6b74', ink: '#eef0ea', w: 4, after: 12, name: 'ケイ素' },
-  P:  { z: 15, v: 3, mass: '30.974', col: '#f0b9a0', ink: '#2f3a44', w: 4, after: 12, name: 'リン' },
-  Fe: { z: 26, v: 3, mass: '55.845', col: '#7a4b3a', ink: '#f3e6da', w: 4, after: 12, name: '鉄' },
-  Cu: { z: 29, v: 2, mass: '63.546', col: '#c47a4a', ink: '#2a1e18', w: 4, after: 12, name: '銅' },
-  Zn: { z: 30, v: 2, mass: '65.38',  col: '#8fa0aa', ink: '#1f272c', w: 4, after: 12, name: '亜鉛' },
-  Ag: { z: 47, v: 1, mass: '107.87', col: '#e0e3e1', ink: '#2f3a44', w: 3, after: 12, name: '銀' },
+  Ca: { z: 20, v: 2, mass: '40.078', col: '#b5a79a', ink: '#2f3a44', w: 6, after: 4,  name: 'カルシウム' },
+  Mg: { z: 12, v: 2, mass: '24.305', col: '#cfd8dc', ink: '#2f3a44', w: 5, after: 9, name: 'マグネシウム' },
+  K:  { z: 19, v: 1, mass: '39.098', col: '#8faa6a', ink: '#1f2a20', w: 4, after: 14, name: 'カリウム' },
+  F:  { z: 9,  v: 1, mass: '18.998', col: '#d9e58a', ink: '#2f3a44', w: 4, after: 14, name: 'フッ素' },
+  Br: { z: 35, v: 1, mass: '79.904', col: '#9a3b26', ink: '#f6e9dc', w: 3, after: 26, name: '臭素' },
+  Al: { z: 13, v: 3, mass: '26.982', col: '#a9b3ba', ink: '#2f3a44', w: 3, after: 32, name: 'アルミニウム' },
+  Si: { z: 14, v: 4, mass: '28.085', col: '#5f6b74', ink: '#eef0ea', w: 3, after: 32, name: 'ケイ素' },
+  P:  { z: 15, v: 3, mass: '30.974', col: '#f0b9a0', ink: '#2f3a44', w: 3, after: 38, name: 'リン' },
+  Fe: { z: 26, v: 3, mass: '55.845', col: '#7a4b3a', ink: '#f3e6da', w: 4, after: 20, name: '鉄' },
+  Cu: { z: 29, v: 2, mass: '63.546', col: '#c47a4a', ink: '#2a1e18', w: 4, after: 20, name: '銅' },
+  Zn: { z: 30, v: 2, mass: '65.38',  col: '#8fa0aa', ink: '#1f272c', w: 3, after: 26, name: '亜鉛' },
+  Ag: { z: 47, v: 1, mass: '107.87', col: '#e0e3e1', ink: '#2f3a44', w: 3, after: 38, name: '銀' },
   U:  { z: 92, v: 4, mass: '238.03', col: '#3d4a33', ink: '#e9e4c8', w: 1.4, late: true, name: 'ウラン' },
-  Pu: { z: 94, v: 4, mass: '(244)',  col: '#6e5a33', ink: '#f1e8d2', w: 0.8, late: true, name: 'プルトニウム' },
+  Pu: { z: 94, v: 4, mass: '(244)',  col: '#6e5a33', ink: '#f1e8d2', w: 0.8, late: true, after: 14, name: 'プルトニウム' },
 };
 
 const mol = (atoms, edges) => ({ atoms: atoms.split(' '), edges });
