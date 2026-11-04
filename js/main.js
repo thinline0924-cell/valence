@@ -185,12 +185,14 @@ $('quitBtn').onclick = () => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
 let prev = performance.now();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function frame(now) {
   const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
   if (!paused) game.update(dt);
   if (!game.over && game.time < 10 && !game.paused) {
     const s = Math.ceil(game.time); if (s !== lastTick) { lastTick = s; audio.play('tick'); }
   }
+  if (!$('title').hidden && !reduceMotion) view.azGoal += dt * 0.12;   // 開始画面の間は盤をゆっくり回す
   view.update(paused ? 0 : dt, game);
   hud.update(game);
   requestAnimationFrame(frame);
