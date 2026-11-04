@@ -11,8 +11,13 @@ export const RULES = {
   tick: 0.5,          // 反応の判定の間隔(秒)
   tickFever: 0.28,    // 過熱中の間隔(温度が高いほど反応は速い)
   bias: 0.3,          // 組み立て中の分子に合う原子を配る確率
-  fragLife: 20,       // 組み立て途中の原子が散るまで(秒)
-  gasLife: 24,        // 反応しない気体が抜けていくまで(秒)
+  fragLife: 12,       // 組み立て途中の原子が散るまで(秒。最後に原子を足してから数える)
+  loneLife: 7,        // どことも結合していない原子1つが散るまで(秒)
+  warnBefore: 3,      // 散る何秒前から点滅させるか
+  gasLife: 18,        // 反応しない気体が抜けていくまで(秒)
+  idleLife: 32,       // 反応しないまま置かれた液体・固体を回収するまで(秒)
+  crowdFree: 5,       // 空きマスがこれより少ないと、いちばん古い物から片付ける
+  supplyFree: 12,     // 空きマスがこれ以上あるときだけ、水と試薬を補給する
   collectDelay: 1.0,  // それ以上反応しない物質が回収されるまで(秒)
   water: 5,           // 水の補給の間隔(秒)。盤の水が waterMin より少ないとき、空いたマスに一滴落ちる
   waterMin: 4,
@@ -20,6 +25,9 @@ export const RULES = {
   flameAt: 150,       // この熱量(kJ)以上の発熱反応は炎を出し、となりの燃えるものに点火する
   nuclearAfter: 12,   // ウランとプルトニウムが出はじめるまでの反応の回数
   fissionPts: 2000,   // 核分裂1回の基本点
+  fissionDecay: 0.6,  // 同じゲームで核分裂を重ねるたびに、得点にかける倍率
+  fuelMax: { U: 3, Pu: 2 }, // 1ゲームで出てくるウラン・プルトニウムの数の上限
+  spentLife: 15,      // 使い終わった燃料(核分裂生成物)がマスをふさぐ時間(秒)
   diffuse: 0.35,      // 気体が隣へ動く確率(1秒あたり、空気と同じ重さのとき)。軽いほど速い(グレアムの法則)
 };
 
@@ -33,7 +41,7 @@ export class Game {
   start() {
     Object.assign(this, {
       t: 0, time: RULES.time, score: 0, heat: 0, fever: 0, chain: 0, maxChain: 0,
-      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(),
+      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(), lateCount: { U: 0, Pu: 0 }, fissions: 0,
       over: false, found: new Set(), reactCount: 0, lastHeatHint: -99, pauseLeft: 0, seen: new Map(),
     });
     this.queue = ['Cl', this.pick(), this.pick()];
@@ -149,18 +157,21 @@ export class Game {
         const counts = {};
         for (const a of f.atoms) counts[a.el] = (counts[a.el] || 0) + 1;
         for (const el of Object.keys(ELEMENTS)) {
-          if (ELEMENTS[el].late && !this.nuclearOpen) continue;
+          if (ELEMENTS[el].late && !this.lateOk(el)) continue;
           const c = { ...counts, [el]: (counts[el] || 0) + 1 };
           if (BUILDABLE.some(b => Object.entries(c).every(([e, n]) => (b.counts[e] || 0) >= n))) want.add(el);
         }
       }
-      if (want.size) { const w = [...want]; return w[Math.floor(Math.random() * w.length)]; }
+      if (want.size) { const w = [...want]; return this.counted(w[Math.floor(Math.random() * w.length)]); }
     }
-    const list = Object.entries(ELEMENTS).filter(([, e]) => !e.late || (this.cells && this.nuclearOpen));
+    const list = Object.entries(ELEMENTS).filter(([el, e]) => !e.late || this.lateOk(el));
     const tot = list.reduce((s, [, e]) => s + e.w, 0);
     let r = Math.random() * tot;
-    for (const [el, e] of list) { r -= e.w; if (r <= 0) return el; }
+    for (const [el, e] of list) { r -= e.w; if (r <= 0) return this.counted(el); }
     return 'H';
+  }
+  lateOk(el) { return this.cells && this.nuclearOpen && this.lateCount[el] < RULES.fuelMax[el]; }
+  counted(el) { if (ELEMENTS[el].late) this.lateCount[el]++; return el;
   }
 
   /* ---------- 反応 ---------- */
@@ -268,6 +279,7 @@ export class Game {
     this.cells.delete(key);
     const products = [], escapes = [];
     const fp = this.addSub('FP', key, this.t + delay);
+    fp.spentUntil = this.t + RULES.spentLife;
     products.push({ id: fp.id, sub: 'FP', key });
     const free = neighbors(key).filter(k => !this.cells.has(k));
     if (free.length) { const g = this.addSub(N.gas, free[Math.floor(Math.random() * free.length)], this.t + delay); products.push({ id: g.id, sub: N.gas, key: g.key }); }
@@ -276,7 +288,9 @@ export class Game {
     for (const n of neighbors(key)) { const x = this.cells.get(n); if (x && x.kind === 'sub' && SUBSTANCES[x.sub].fuel) x.irr = true; }
     this.nextFlames.add(key);
     this.addHeat(RULES.heatMax);
-    const pts = Math.round(RULES.fissionPts * this.chain * (this.feverOn ? 2 : 1));
+    // 切り札だが、核分裂だけで稼げないように:重ねるほど得点が下がり、連鎖の倍率は2倍まで
+    const pts = Math.round(RULES.fissionPts * Math.min(2, this.chain) * Math.pow(RULES.fissionDecay, this.fissions));
+    this.fissions++;
     this.finishNuclear(N, key, [{ id: e.id, key, sub: e.sub }], products, escapes, pts);
   }
 
@@ -326,7 +340,7 @@ export class Game {
       this.waterIn = RULES.water;
       const n = [...this.cells.values()].filter(e => e.sub === 'H2O').length;
       const free = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k]);
-      if (n < RULES.waterMin && free.length > 4) {
+      if (n < RULES.waterMin && free.length >= RULES.supplyFree - 4) {
         const e = this.addSub('H2O', free[Math.floor(Math.random() * free.length)], this.t + 0.4);
         this.emit('spawn', { id: e.id, sub: 'H2O', key: e.key, drip: true });
         this.schedule(0.5);
@@ -339,7 +353,7 @@ export class Game {
       const tier = TIERS.filter(t => this.reactCount >= t.after).length;
       if (tier > this.tier) { this.tier = tier; if (tier > 1) this.emit('tier', { tier }); }
       const pool = TIERS.slice(0, tier).flatMap(t => t.subs);
-      if (free.length > 8) {
+      if (free.length >= RULES.supplyFree) {
         const sub = pool[Math.floor(Math.random() * pool.length)];
         const e = this.addSub(sub, free[Math.floor(Math.random() * free.length)], this.t + 0.4);
         this.emit('spawn', { id: e.id, sub, key: e.key, drip: true });
@@ -356,19 +370,29 @@ export class Game {
     for (const [k, e] of [...this.cells]) {
       if (e.kind === 'sub') {
         const age = this.t - e.born;
-        if (FINAL.has(e.sub) && age > RULES.collectDelay) {
+        const S = SUBSTANCES[e.sub];
+        if (e.sub === 'FP') {
+          if (this.t >= e.spentUntil) { this.cells.delete(k); this.emit('collect', { id: e.id, key: k, sub: e.sub, pts: 0 }); }
+        } else if (FINAL.has(e.sub) && age > RULES.collectDelay) {
           this.cells.delete(k);
           const pts = 40 * (this.feverOn ? 2 : 1);
           this.score += pts;
           this.emit('collect', { id: e.id, key: k, sub: e.sub, pts });
-        } else if (SUBSTANCES[e.sub].st === 'g' && age > RULES.gasLife) {
+        } else if (S.st === 'g' && age > RULES.gasLife) {
           this.cells.delete(k);
           this.emit('escape', { id: e.id, key: k, sub: e.sub });
-        } else if (!oldest || e.born < oldest.born) oldest = e;
+        } else if (!S.fuel && S.st !== 'g' && age > RULES.idleLife) {
+          this.cells.delete(k);
+          this.score += 10;
+          this.emit('collect', { id: e.id, key: k, sub: e.sub, pts: 10 });
+        } else if (!S.fuel && (!oldest || e.born < oldest.born)) oldest = e;
       }
     }
     for (const f of [...this.frags.values()]) {
-      if (this.t - f.touched > RULES.fragLife) {
+      const life = f.atoms.length === 1 ? RULES.loneLife : RULES.fragLife;
+      const age = this.t - f.touched;
+      if (age > life - RULES.warnBefore && !f.warned) { f.warned = true; this.emit('fragWarn', { atoms: f.atoms.map(a => a.id) }); }
+      if (age > life) {
         for (const a of f.atoms) this.cells.delete(a.key);
         this.frags.delete(f.id);
         this.emit('dissolve', { atoms: f.atoms.map(a => ({ id: a.id, key: a.key })), edges: f.edges });
@@ -387,7 +411,18 @@ export class Game {
       this.emit('move', { id: e.id, from, to: k });
     }
     if (moved) this.schedule(0.35);
-    if (free < 3 && oldest) {
+    // 混みすぎたら、いちばん古い組み立て途中の原子か物質を片付ける
+    if (free < RULES.crowdFree) {
+      let of = null;
+      for (const f of this.frags.values()) if (!of || f.touched < of.touched) of = f;
+      if (of && (!oldest || of.touched < oldest.born)) {
+        for (const a of of.atoms) this.cells.delete(a.key);
+        this.frags.delete(of.id);
+        this.emit('dissolve', { atoms: of.atoms.map(a => ({ id: a.id, key: a.key })), edges: of.edges });
+        oldest = null;
+      }
+    }
+    if (free < RULES.crowdFree && oldest) {
       this.cells.delete(oldest.key);
       this.emit('overflow', { id: oldest.id, key: oldest.key });
     }

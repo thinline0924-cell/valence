@@ -83,6 +83,22 @@ for (const N of NUCLEAR_LIST) if (N.nucl) {
   check(g.feverOn, 'fission starts overheating');
 }
 
+// 核分裂は重ねるほど得点が下がり、燃料の出る数には上限がある
+{
+  const g = new Game(); const pts = [];
+  g.on((t, d) => { if (t === 'react' && d.R.id === 'u_fission') pts.push(d.pts); });
+  g.start(); g.cells.clear(); g.frags.clear();
+  for (let i = 0; i < 4; i++) { g.addSub('UO2', `${i - 2},0`, 0); g.addSub('H2O', `${i - 2},1`, 0); }
+  for (let i = 0; i < 6; i++) { g.tick(); g.t += 1; }
+  check(pts.length >= 3 && pts.every((p, i) => i === 0 || p < pts[i - 1] * 2), `fission points decay (${pts.join(',')})`);
+  const fp = [...g.cells.values()].find(e => e.sub === 'FP');
+  check(fp && fp.spentUntil > g.t, 'spent fuel blocks its cell');
+  const h = new Game(); h.start(); h.reactCount = 99;
+  let u = 0, pu = 0;
+  for (let i = 0; i < 5000; i++) { const el = h.pick(); if (el === 'U') u++; if (el === 'Pu') pu++; }
+  check(u <= 3 && pu <= 2, `fuel cap (U ${u}, Pu ${pu})`);
+}
+
 // 自動プレイ
 for (const mode of ['random', 'greedy']) {
 let stats = { games: 0, reactions: 0, completes: 0, found: new Set(), maxChain: 0, fevers: 0, score: 0 };

@@ -14,12 +14,21 @@
 |---|---|---|---|
 | `ui`(ボタン) | `se_click.mp3` | 1.2秒の高いクリック | 先頭の無音を削り、音量を上げた |
 | `tick`(秒読み) | `se_click.mp3` | 同上 | 少し低く鳴らす(`rate` 0.8) |
+| `place`(置く) | `se_tap.mp3` | 1.0秒の短い打音 | 先頭の無音を削った。音量 1.6 倍 |
+| `bond`(結合) | `se_tap.mp3` | 同上 | 高く短く鳴らす(`rate` 1.5) |
 | `complete`(物質の完成) | `se_complete.mp3` | 1.7秒の澄んだ音 | 先頭の無音を削った |
+| `react_s`(小さな反応) | `se_bubble.mp3` | 1.7秒、0.2秒おきに弾む中音 | 先頭の無音を削った |
+| `react_m`(中くらいの反応) | `se_ignite.mp3` | 0.8秒、低音を含む「ボッ」 | 先頭の無音を削った |
+| `react_l`(大きな反応) | `se_whoosh.mp3` | 1.4秒、低音と高音の広い音 | 先頭の無音を削った |
+| `endo`(熱を使う反応) | `se_whoosh.mp3` | 同上 | 高めに小さく(`rate` 1.35) |
+| `escape`(気体が抜ける) | `se_whoosh.mp3` | 同上 | さらに高く小さく(`rate` 1.7) |
+| `drip`(水の補給) | `se_bubble.mp3` | 同上 | 高めに小さく(`rate` 1.4) |
+| `fission`(核分裂) | `se_thump.mp3` | 1.0秒、大きな中低音の衝撃 | 先頭の無音を削った。音量 0.75 倍 |
 | `fever_on`(過熱に入る) | `se_chime.mp3` | 3.6秒の連打と余韻 | 先頭の無音を削った |
 | `bgm_main` | `bgm_main.mp3` | 「電子の空間」(alaki)2分8秒・120 BPM | そのまま。最後の2秒のフェードを避けて 126 秒でループ |
 | `bgm_fever` | `bgm_fever.mp3` | 1分45秒・146 BPM | 320 kbps から 192 kbps に変換。ファイル全体でループ |
 
-**まだ足りない音**:`place` `bond` `fizzle` `react_s` `react_m` `react_l` `endo` `fission` `collect` `escape` `drip` `fever_off` `need_heat` `start` `end`
+**まだ足りない音**:`fizzle`(原子が散る) `collect`(回収) `fever_off`(過熱が終わる) `need_heat`(熱が足りない) `start`(開始) `end`(終了)。`bond` `endo` `escape` `drip` は、ほかの音の高さを変えて代わりにしているので、専用の音があると良くなる
 
 雰囲気の共通の方向:ガラス・陶器・金属を軽くたたく音、水の音、泡の音など、卓上の実験器具から出そうな音にします。電子音っぽいピコピコした音や、派手な爆発音は避けます。
 

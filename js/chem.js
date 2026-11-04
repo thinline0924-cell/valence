@@ -216,7 +216,7 @@ export const ALL_REACTIONS = [...REACTIONS, ...NUCLEAR_LIST];
 
 // それ以上反応しない物質:できたら回収される
 const AS_REACTANT = new Set(REACTIONS.flatMap(r => r.in));
-export const FINAL = new Set(Object.keys(SUBSTANCES).filter(k => !AS_REACTANT.has(k) && !SUBSTANCES[k].fuel));
+export const FINAL = new Set(Object.keys(SUBSTANCES).filter(k => !AS_REACTANT.has(k) && !SUBSTANCES[k].fuel && k !== 'FP'));
 
 // 原子から組み立てられる物質
 export const BUILDABLE = Object.entries(SUBSTANCES).filter(([, s]) => s.mol).map(([id, s]) => {

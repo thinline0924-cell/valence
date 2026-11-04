@@ -418,8 +418,7 @@ export class View {
         this.ents.delete(d.id); e.label.remove();
         const y0 = e.obj.position.y;
         this.tween(0.55, k => { e.obj.position.y = y0 + easeIn(k) * 1.6; e.obj.scale.setScalar(1 - easeIn(k) * 0.85); }, () => this.scene.remove(e.obj));
-        this.ring(d.key, P.cream, 0.6);
-        this.floatText(d.key, `+${d.pts}`);
+        if (d.pts) { this.ring(d.key, P.cream, 0.6); this.floatText(d.key, `+${d.pts}`); }
         break;
       }
       case 'escape': case 'overflow': {
@@ -430,6 +429,7 @@ export class View {
         break;
       }
       case 'needHeat': this.ring(d.key, P.heat, 0.4); break;
+      case 'fragWarn': for (const id of d.atoms) { const e = this.ents.get(id); if (e) e.warn = performance.now(); } break;
       case 'hint': this.hintKey = d.key; this.hintMesh.visible = !!d.key; if (d.key) this.hintMesh.position.copy(hexPos(d.key)).setY(0.01); break;
       case 'fever': this.warmGoal = d.on ? 1 : 0; break;
     }
@@ -554,6 +554,9 @@ export class View {
         if (ch.userData.decal) { ch.rotation.y = az; ch.rotation.x = -Math.PI / 2; }
         if (ch.userData.tag) { ch.rotation.y = az; ch.rotation.x = -Math.PI / 2; ch.position.set(Math.sin(az) * 0.5, 0.006, Math.cos(az) * 0.5); }
       }
+      if (e.warn) { const on = Math.sin((performance.now() - e.warn) / 1000 * Math.PI * 4) > -0.2; o.visible = on; }
+      if (o.userData.sub === 'FP' && e.spent == null) e.spent = performance.now();
+      if (e.spent != null) { const k = Math.min(1, (performance.now() - e.spent) / 15000); o.userData.body.children.forEach(m => { if (m.material?.emissive) m.material.emissiveIntensity = 0.6 * (1 - k); }); }
       if (o.userData.float != null) o.userData.body.position.y = o.userData.float + Math.sin(t * 1.4 + e.born) * 0.04;
       if (o.userData.rim) o.userData.rim.lookAt(this.camera.position);
       if (o.userData.spin) o.userData.spin.rotation.y = t;
