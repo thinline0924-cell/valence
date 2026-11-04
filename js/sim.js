@@ -11,8 +11,9 @@ export const RULES = {
   tick: 0.5,          // 反応の判定の間隔(秒)
   tickFever: 0.28,    // 過熱中の間隔(温度が高いほど反応は速い)
   bias: 0.3,          // 組み立て中の分子に合う原子を配る確率
-  settle: 0.9,        // もっと大きな物質になれるとき、完成を待つ時間(秒)
-  settleFever: 0.6,
+  settle: 0.6,        // もっと大きな物質になれるとき、完成を待つ時間(秒)
+  settleFever: 0.45,
+  settleLong: 2.5,      // 次の原子で大きくできるときは、この秒数まで待つ(次の原子を置くと数え直す)
   fragLife: 12,       // 組み立て途中の原子が散るまで(秒。最後に原子を足してから数える)
   loneLife: 7,        // どことも結合していない原子1つが散るまで(秒)
   warnBefore: 3,      // 散る何秒前から点滅させるか
@@ -65,13 +66,17 @@ export class Game {
   demoAtom(el, key) {
     if (this.queue[0] === el) this.queue.shift();
     this.placeAtom(el, key);
+    for (const f of this.frags.values()) if (f.settleAt && !f.atoms.some(a => a.key === key)) this.resettle(f);
     this.schedule(RULES.tick);
   }
   stopDemo() { this.demo = false; this.over = true; this.emit('start'); }
 
   start(known = new Set()) {
     this.reset(known);
-    this.queue = ['Cl', this.pick(), this.pick()];
+    // 見本の連鎖の邪魔をしないよう、2番目の原子は塩化水素を大きくできないものにする(O だと次亜塩素酸を待ってしまう)
+    let second = this.pick();
+    for (let i = 0; i < 20 && exactSub({ H: 1, Cl: 1, [second]: 1 }); i++) second = this.pick();
+    this.queue = ['Cl', second, this.pick()];
     this.emit('start');
     // 最初の連鎖の見本:加熱マスに Cl を置くと
     //   H + Cl → HCl → (水) 塩酸 → (水酸化ナトリウム水溶液) 中和 → (加熱) 食塩の結晶 と進む
@@ -153,6 +158,7 @@ export class Game {
     this.queue.push(this.pick());
     if (this.hintKey) { this.hintKey = null; this.emit('hint', { key: null }); }
     this.placeAtom(el, key);
+    for (const f of this.frags.values()) if (f.settleAt && !f.atoms.some(a => a.key === key)) this.resettle(f);
     this.schedule(RULES.tick * (this.feverOn ? 0.6 : 1));
     return true;
   }
@@ -165,17 +171,24 @@ export class Game {
     this.emit('place', { id: atom.id, el, key });
 
     const nbAtoms = neighbors(key).map(k => this.cells.get(k)).filter(e => e && e.kind === 'atom');
+    // となりの完成した物質(原子から作れるもの)も、原子を取り込んで大きな物質に変われる(O2 + O → O3、H2 + O → H2O など)
+    const nbSubs = [null, ...neighbors(key).map(k => this.cells.get(k))
+      .filter(e => e && e.kind === 'sub' && SUBSTANCES[e.sub].mol && !e.target && e.readyAt <= this.t + 0.5)];
     const fids = [...new Set(nbAtoms.map(a => a.frag))];
-    let best = { fids: [], sub: null, score: 0 };
-    for (let mask = 1; mask < (1 << fids.length); mask++) {
-      const pick = fids.filter((_, i) => mask & (1 << i));
-      const counts = { [el]: 1 };
-      for (const fid of pick) for (const a of this.frags.get(fid).atoms) counts[a.el] = (counts[a.el] || 0) + 1;
-      if (!fitsSome(counts)) continue;
-      const sub = exactSub(counts);
-      const size = Object.values(counts).reduce((a, b) => a + b, 0);
-      const score = (sub ? 100 : 0) + size;
-      if (score > best.score) best = { fids: pick, sub, score };
+    let best = { fids: [], sub: null, score: 0, absorb: null };
+    for (const host of nbSubs) {
+      for (let mask = host ? 0 : 1; mask < (1 << fids.length); mask++) {
+        const pick = fids.filter((_, i) => mask & (1 << i));
+        const counts = { [el]: 1 };
+        for (const fid of pick) for (const a of this.frags.get(fid).atoms) counts[a.el] = (counts[a.el] || 0) + 1;
+        if (host) for (const [e, n] of Object.entries(BUILT.get(host.sub))) counts[e] = (counts[e] || 0) + n;
+        if (!fitsSome(counts)) continue;
+        const sub = exactSub(counts);
+        if (host && !sub) continue;   // 取り込むのは、ちょうど別の物質になるときだけ
+        const size = Object.values(counts).reduce((a, b) => a + b, 0);
+        const score = (sub ? 100 : 0) + (host ? 50 : 0) + size;
+        if (score > best.score) best = { fids: pick, sub, score, absorb: host };
+      }
     }
     const frag = { id: this.uid++, atoms: [atom], edges: [], touched: this.t, lastKey: key };
     for (const fid of best.fids) {
@@ -189,15 +202,30 @@ export class Game {
     }
     for (const a of frag.atoms) a.frag = frag.id;
     this.frags.set(frag.id, frag);
+    if (best.absorb) {
+      const h = best.absorb;
+      this.cells.delete(h.key);
+      this.emit('absorb', { id: h.id, key: h.key, into: key });
+      return this.complete(frag, best.sub, key);
+    }
     if (!best.sub) return;
     // もっと大きな物質になれる組み合わせなら、少し待ってから完成させる(続けて原子を足せるように)
     const counts = {};
     for (const a of frag.atoms) counts[a.el] = (counts[a.el] || 0) + 1;
     if (canGrow(counts)) {
-      frag.settleAt = this.t + (this.feverOn ? RULES.settleFever : RULES.settle);
-      frag.sub = best.sub;
-      this.emit('settle', { atoms: frag.atoms.map(a => a.id), on: true, dur: frag.settleAt - this.t });
+      frag.sub = best.sub; frag.counts = counts;
+      this.resettle(frag);
     } else this.complete(frag, best.sub, key);
+  }
+
+  // 完成を待つ時間:次の原子を足すと大きな物質になれるなら長く、なれないなら短く
+  resettle(frag) {
+    const next = this.queue[0];
+    // 次の原子をとなりに足すと、ちょうど別の物質になるときだけ長く待つ(完成したあとでも、となりに置けば取り込める)
+    const grow = next && exactSub({ ...frag.counts, [next]: (frag.counts[next] || 0) + 1 });
+    const wait = grow ? RULES.settleLong : (this.feverOn ? RULES.settleFever : RULES.settle);
+    frag.settleAt = this.t + wait;
+    this.emit('settle', { atoms: frag.atoms.map(a => a.id), on: true, dur: wait, sub: frag.sub, grow: grow ? next : null });
   }
 
   complete(frag, subId, key) {
@@ -319,7 +347,7 @@ export class Game {
     }
     if (R.dH <= -RULES.flameAt) for (const k of keys) this.nextFlames.add(k);
     if (R.dH < 0) this.addHeat(-R.dH);
-    else this.heat = Math.max(0, this.heat - R.dH);
+    else if (R.cond !== 'light') this.heat = Math.max(0, this.heat - R.dH);   // 光で進む反応は、光のエネルギーを使う
     // 同じ連鎖の中で同じ反応をくり返すと、得点は半分ずつになる(循環する反応で稼ぎ続けられないように)
     const rep = this.seen.get(R.id) || 0; this.seen.set(R.id, rep + 1);
     const pts = Math.round((60 + Math.abs(R.dH) * 0.5) * this.chain * (this.feverOn ? 2 : 1) * Math.pow(0.5, rep));
@@ -590,6 +618,7 @@ export function exactValence(atoms, edges) {
   return go(0);
 }
 
+const BUILT = new Map(BUILDABLE.map(b => [b.id, b.counts]));
 const fitsSome = counts => BUILDABLE.some(b => Object.entries(counts).every(([e, c]) => (b.counts[e] || 0) >= c));
 const sameCounts = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => a[k] === b[k]);
 const exactSub = counts => (BUILDABLE.find(b => sameCounts(b.counts, counts)) || {}).id || null;

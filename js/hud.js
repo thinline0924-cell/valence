@@ -25,8 +25,12 @@ export class Hud {
     if (type === 'hint') this.guide(d.key ? `光っている加熱マスに ${d.el} を置くと、連鎖が始まります` : '');
     if (type === 'unlock') this.unlockMsg(d.els);
     if (type === 'tier') this.hint('補給される試薬が増えました', 2000);
+    if (type === 'settle' && d.on && d.grow) this.hint(`${SUBSTANCES[d.sub].name}になれます。となりに ${d.grow} を置くと、もっと大きな物質に`, 2200, 'learn');
     if (type === 'targets' || type === 'target') this.showTargets(d.list);
-    if (type === 'learn') this.hint(`${SUBSTANCES[d.sub].name}は、${needText(d.rest)}と${COND[d.cond]}反応する`, 2600, 'learn');
+    if (type === 'learn') {
+      const name = SUBSTANCES[d.sub].name, others = d.rest.filter(x => x !== d.sub);
+      this.hint(others.length ? `${name}は、${needText(d.rest)}と${COND[d.cond]}反応する` : `${name}どうしが${COND[d.cond]}反応する`, 2600, 'learn');
+    }
     if (type === 'end') this.result(d);
   }
 

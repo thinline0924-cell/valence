@@ -54,7 +54,8 @@ function greedy(game) {
 { const seen = new Map(); for (const b of BUILDABLE) { const k = JSON.stringify(Object.entries(b.counts).sort()); check(!seen.has(k), `same composition ${b.id} ${seen.get(k)}`); seen.set(k, b.id); } }
 // 組成が原子価に合うか(手の合計が偶数で、木の形にできる以上の手がある)
 for (const b of BUILDABLE) {
-  const s = SUBSTANCES[b.id]; const atoms = s.mol.atoms.map((el, i) => ({ id: i, el }));
+  const s = SUBSTANCES[b.id]; if (s.vx) continue;   // 原子価が単純な数え方に合わない物質(超原子価・ラジカル・混合原子価)は除く
+  const atoms = s.mol.atoms.map((el, i) => ({ id: i, el }));
   check(exactValence(atoms, s.mol.edges), `valence of ${b.id}`);
 }
 // 反応に出てくる物質がすべて定義されているか
@@ -131,6 +132,36 @@ for (const N of NUCLEAR_LIST) if (N.nucl) {
   const share = rc => { g.reactCount = rc; g.frags.clear(); let o = 0; for (let i = 0; i < 6000; i++) if (g.pick() === 'O') o++; return o / 6000; };
   const a = share(0), b = share(30);
   check(b > 0.19 && b > a - 0.03, `oxygen share keeps up (${a.toFixed(2)} → ${b.toFixed(2)})`);
+}
+
+// 完成した物質に原子を足して、大きな物質にできるか(O2 + O → O3、C + O + O → CO2、H + H + O → H2O)
+for (const [seq, want] of [[['O', 'O', 'O'], 'O3'], [['C', 'O', 'O'], 'CO2'], [['H', 'H', 'O'], 'H2O'], [['O', 'O', 'H', 'H'], 'H2O2'], [['N', 'N', 'O'], 'N2O']]) {
+  const g = new Game(); g.startDemo(seq);
+  const keys = ['0,0', '1,0', '2,0', '1,1'];   // 完成した物質は最後に置いたマスにできるので、その隣に足していく
+  seq.forEach((el, i) => { g.demoAtom(el, keys[i]); for (let k = 0; k < 60; k++) g.update(1 / 30); });
+  const got = [...g.cells.values()].filter(e => e.kind === 'sub').map(e => e.sub);
+  check(got.includes(want), `build ${seq.join('')} → ${want} (got ${got.join(',') || 'nothing'})`);
+}
+
+// 原子から作れるはずの物質が、どれも実際に作れるか(置く順番をいろいろ変えて試す)
+{
+  const ring = ['0,0', '1,0', '1,-1', '0,-1', '-1,0', '-1,1', '0,1', '2,-1', '2,-2', '1,-2'];
+  const stuck = [];
+  for (const b of BUILDABLE) {
+    const atoms = Object.entries(b.counts).flatMap(([e, n]) => Array(n).fill(e));
+    if (atoms.length > ring.length) continue;
+    let ok = false;
+    for (let trial = 0; trial < 40 && !ok; trial++) {
+      const seq = trial === 0 ? atoms.slice() : atoms.slice().sort(() => Math.random() - 0.5);
+      const g = new Game(); g.startDemo(seq); g.demoKeep = true;
+      seq.forEach((el, i) => { g.demoAtom(el, ring[i]); for (let k = 0; k < 45; k++) g.update(1 / 30); });
+      for (let k = 0; k < 45; k++) g.update(1 / 30);
+      for (let k = 0; k < 150; k++) g.update(1 / 30);
+      ok = [...g.cells.values()].some(e => e.sub === b.id);
+    }
+    if (!ok) stuck.push(b.id);
+  }
+  check(!stuck.length, `cannot be built: ${stuck.join(' ')}`);
 }
 
 // 自動プレイ

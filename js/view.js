@@ -505,6 +505,7 @@ export class View {
       case 'targetMark': { const e = this.ents.get(d.id); if (e) e.mark = d.on; break; }
       case 'target': this.ring(d.key, P.light, 2.2); this.floatText(d.key, `お題 +${d.pts}`, 'target'); break;
       case 'settle': for (const id of d.atoms) { const e = this.ents.get(id); if (e) e.settle = d.on ? { t0: performance.now(), dur: d.dur * 1000 } : null; } break;
+      case 'absorb': this.gather(d.id, d.into, 0.2); break;
       case 'fragWarn': for (const id of d.atoms) { const e = this.ents.get(id); if (e) e.warn = performance.now(); } break;
       case 'hint': this.hintKey = d.key; this.hintMesh.visible = !!d.key; if (d.key) this.hintMesh.position.copy(hexPos(d.key)).setY(0.01); break;
       case 'fever': this.warmGoal = d.on ? 1 : 0; break;
