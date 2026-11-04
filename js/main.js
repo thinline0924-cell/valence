@@ -41,9 +41,11 @@ function start() {
   audio.unlock(); audio.play('start'); audio.music('main');
   $('title').hidden = true; $('result').hidden = true;
   lastTick = -1;
-  game.start();
+  game.start(hud.foundAll);
 }
 $('startBtn').onclick = start;
+document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => { audio.unlock(); audio.play('ui'); hud.openBook(); });
+$('bookClose').onclick = () => { audio.play('ui'); $('book').hidden = true; };
 
 // 音の確認(開始画面):割り当てた音を1つずつ鳴らす
 $('soundTest').addEventListener('toggle', () => {

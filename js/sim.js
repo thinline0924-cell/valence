@@ -24,6 +24,8 @@ export const RULES = {
   reagent: 9,         // 試薬の補給の間隔(秒)。反応の回数が増えるほど、補給される物質の種類が広がる
   flameAt: 150,       // この熱量(kJ)以上の発熱反応は炎を出し、となりの燃えるものに点火する
   nuclearAfter: 12,   // ウランとプルトニウムが出はじめるまでの反応の回数
+  targetPts: 500,     // お題の反応を起こしたときの得点
+  targetHelp: 0.5,    // 試薬の補給のうち、お題の材料を中心のとなりに落とす割合
   fissionPts: 2000,   // 核分裂1回の基本点
   fissionDecay: 0.6,  // 同じゲームで核分裂を重ねるたびに、得点にかける倍率
   fuelMax: { U: 3, Pu: 2 }, // 1ゲームで出てくるウラン・プルトニウムの数の上限
@@ -38,10 +40,11 @@ export class Game {
   on(fn) { this.listeners.push(fn); }
   emit(type, d = {}) { for (const f of this.listeners) f(type, d); }
 
-  start() {
+  start(known = new Set()) {
+    this.known = known;
     Object.assign(this, {
       t: 0, time: RULES.time, score: 0, heat: 0, fever: 0, chain: 0, maxChain: 0,
-      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(), lateCount: { U: 0, Pu: 0 }, fissions: 0,
+      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(), lateCount: { U: 0, Pu: 0 }, fissions: 0, targets: [], lastLearn: -99,
       over: false, found: new Set(), reactCount: 0, lastHeatHint: -99, pauseLeft: 0, seen: new Map(),
     });
     this.queue = ['Cl', this.pick(), this.pick()];
@@ -64,6 +67,49 @@ export class Game {
       this.addSub(s, k, -1);
       near.add(k); neighbors(k).forEach(n => near.add(n));
     }
+    // お題:まだ見つけていない反応を2つ選び、中心になる物質を盤に置く
+    this.targets = pickTargets(known).map(R => ({ R, done: false, center: null }));
+    for (const T of this.targets) this.seedTarget(T, near);
+    this.emit('targets', { list: this.targets });
+  }
+
+  seedTarget(T, avoid = new Set()) {
+    const kind = { heat: 'heat', ignite: 'heat', light: 'light', cat: 'cat' }[T.R.cond];
+    const empty = k => !this.cells.has(k) && !avoid.has(k);
+    let spots = kind ? CELLS.filter(k => SPECIAL[k] === kind && empty(k) && k !== OPENING.at) : [];
+    if (!spots.length) spots = CELLS.filter(k => empty(k) && !SPECIAL[k] && neighbors(k).filter(n => !this.cells.has(n)).length >= 3);
+    if (!spots.length) return;
+    const k = spots[Math.floor(Math.random() * spots.length)];
+    const e = this.addSub(T.R.in[0], k, -1);
+    e.target = T.R.id; T.center = e.id;
+    avoid.add(k); neighbors(k).forEach(n => avoid.add(n));
+    this.emit('targetMark', { id: e.id, on: true });
+  }
+
+  // 未完成のお題のうち、中心のとなりに足りない材料(原子から組み立てられないもの)
+  targetNeed() {
+    for (const T of this.targets) {
+      if (T.done) continue;
+      const c = [...this.cells.values()].find(e => e.id === T.center);
+      if (!c) continue;
+      const have = neighbors(c.key).map(k => this.cells.get(k)).filter(e => e && e.kind === 'sub').map(e => e.sub);
+      const need = T.R.in.slice(1);
+      for (const h of have) { const i = need.indexOf(h); if (i >= 0) need.splice(i, 1); }
+      const drop = need.filter(x => !SUBSTANCES[x].mol);
+      const free = neighbors(c.key).filter(k => !this.cells.has(k));
+      if (drop.length && free.length) return { sub: drop[0], key: free[Math.floor(Math.random() * free.length)] };
+    }
+    return null;
+  }
+
+  // できた物質について、まだ見つけていない反応の手がかりを出す
+  learn(sub) {
+    if (this.t - this.lastLearn < 5) return;
+    const R = REACTIONS.find(R => R.in.includes(sub) && !this.known.has(R.id) && !this.found.has(R.id));
+    if (!R) return;
+    this.lastLearn = this.t;
+    const rest = R.in.slice(); rest.splice(rest.indexOf(sub), 1);
+    this.emit('learn', { sub, rest, cond: R.cond });
   }
 
   get nuclearOpen() { return this.reactCount >= RULES.nuclearAfter; }
@@ -140,6 +186,7 @@ export class Game {
     const pts = 10 * frag.atoms.length * (this.feverOn ? 2 : 1);
     this.score += pts;
     this.emit('complete', { id: e.id, sub: subId, key, atoms: frag.atoms.map(a => ({ id: a.id, key: a.key })), edges: frag.edges, pts });
+    this.learn(subId);
   }
 
   addSub(sub, key, readyAt) {
@@ -251,6 +298,8 @@ export class Game {
     this.found.add(R.id);
     this.reactCount++;
     this.emit('react', { R, center: keys[0], consumed, products, escapes, pts, chain: this.chain, fever: this.feverOn, first });
+    this.checkTarget(R.id, keys[0]);
+    for (const p of products) this.learn(p.sub);
     if (this.reactCount === RULES.nuclearAfter) this.emit('unlock', { els: ['U', 'Pu'] });
   }
 
@@ -307,6 +356,16 @@ export class Game {
     this.found.add(N.id);
     this.reactCount++;
     this.emit('react', { R: N, center: key, consumed, products, escapes, pts, chain: this.chain, fever: this.feverOn, first });
+    this.checkTarget(N.id, key);
+  }
+
+  checkTarget(id, key) {
+    for (const T of this.targets) {
+      if (T.done || T.R.id !== id) continue;
+      T.done = true;
+      this.score += RULES.targetPts;
+      this.emit('target', { id, key, pts: RULES.targetPts, list: this.targets });
+    }
   }
 
   addHeat(kj) {
@@ -353,9 +412,11 @@ export class Game {
       const tier = TIERS.filter(t => this.reactCount >= t.after).length;
       if (tier > this.tier) { this.tier = tier; if (tier > 1) this.emit('tier', { tier }); }
       const pool = TIERS.slice(0, tier).flatMap(t => t.subs);
-      if (free.length >= RULES.supplyFree) {
-        const sub = pool[Math.floor(Math.random() * pool.length)];
-        const e = this.addSub(sub, free[Math.floor(Math.random() * free.length)], this.t + 0.4);
+      for (const T of this.targets) if (!T.done && ![...this.cells.values()].some(e => e.id === T.center)) this.seedTarget(T);
+      const help = Math.random() < RULES.targetHelp ? this.targetNeed() : null;
+      if (help || free.length >= RULES.supplyFree) {
+        const sub = help ? help.sub : pool[Math.floor(Math.random() * pool.length)];
+        const e = this.addSub(sub, help ? help.key : free[Math.floor(Math.random() * free.length)], this.t + 0.4);
         this.emit('spawn', { id: e.id, sub, key: e.key, drip: true });
         this.schedule(0.5);
       }
@@ -378,6 +439,8 @@ export class Game {
           const pts = 40 * (this.feverOn ? 2 : 1);
           this.score += pts;
           this.emit('collect', { id: e.id, key: k, sub: e.sub, pts });
+        } else if (e.target) {
+          // お題の中心は片付けない
         } else if (S.st === 'g' && age > RULES.gasLife) {
           this.cells.delete(k);
           this.emit('escape', { id: e.id, key: k, sub: e.sub });
@@ -385,7 +448,7 @@ export class Game {
           this.cells.delete(k);
           this.score += 10;
           this.emit('collect', { id: e.id, key: k, sub: e.sub, pts: 10 });
-        } else if (!S.fuel && (!oldest || e.born < oldest.born)) oldest = e;
+        } else if (!S.fuel && !e.target && (!oldest || e.born < oldest.born)) oldest = e;
       }
     }
     for (const f of [...this.frags.values()]) {
@@ -401,7 +464,7 @@ export class Game {
     // 気体の拡散:空いている隣のマスへ動く。1/√M に比例
     let moved = false;
     for (const e of [...this.cells.values()]) {
-      if (e.kind !== 'sub' || SUBSTANCES[e.sub].st !== 'g' || e.readyAt > this.t) continue;
+      if (e.kind !== 'sub' || SUBSTANCES[e.sub].st !== 'g' || e.readyAt > this.t || e.target) continue;
       const p = Math.min(0.8, RULES.diffuse * Math.sqrt(29 / SUBSTANCES[e.sub].M)) * 0.8;
       if (Math.random() > p) continue;
       const to = neighbors(e.key).filter(k => !this.cells.has(k));
@@ -441,6 +504,19 @@ export const TIERS = [
   { after: 12, subs: ['C2H4', 'H2S', 'SO2', 'C2H5OH', 'CO', 'NO'] },
   { after: 20, subs: ['SO3', 'NO2', 'C2H2', 'N2H4', 'NaHCO3aq', 'CH3COOH'] },
 ];
+
+// お題の選び方:見つけていない反応のうち、材料が少なく条件の易しいものから
+const OPENING_IDS = new Set(['hcl_dissolve', 'neutral', 'crystallize']);
+function pickTargets(known) {
+  const level = R => R.in.length + (R.cond === 'none' ? 0 : 1) + Math.random() * 1.5;
+  let c = REACTIONS.filter(R => !known.has(R.id) && !OPENING_IDS.has(R.id) && R.in.length <= 3);
+  if (c.length < 2) c = REACTIONS.filter(R => !known.has(R.id) && !OPENING_IDS.has(R.id));
+  if (c.length < 2) c = REACTIONS.filter(R => R.in.length <= 3 && !OPENING_IDS.has(R.id));
+  c = c.map(R => [level(R), R]).sort((a, b) => a[0] - b[0]).slice(0, 6).map(x => x[1]);
+  const out = [];
+  while (out.length < 2 && c.length) out.push(c.splice(Math.floor(Math.random() * c.length), 1)[0]);
+  return out;
+}
 
 // 最初の連鎖の見本の配置
 export const OPENING = { h: '3,-2', water: '2,-2', base: '1,0', at: '2,-1' };

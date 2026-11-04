@@ -429,6 +429,8 @@ export class View {
         break;
       }
       case 'needHeat': this.ring(d.key, P.heat, 0.4); break;
+      case 'targetMark': { const e = this.ents.get(d.id); if (e) e.mark = d.on; break; }
+      case 'target': this.ring(d.key, P.light, 2.2); this.floatText(d.key, `お題 +${d.pts}`, 'target'); break;
       case 'fragWarn': for (const id of d.atoms) { const e = this.ents.get(id); if (e) e.warn = performance.now(); } break;
       case 'hint': this.hintKey = d.key; this.hintMesh.visible = !!d.key; if (d.key) this.hintMesh.position.copy(hexPos(d.key)).setY(0.01); break;
       case 'fever': this.warmGoal = d.on ? 1 : 0; break;
@@ -562,6 +564,18 @@ export class View {
       if (o.userData.spin) o.userData.spin.rotation.y = t;
       if (o.userData.fizz) o.userData.fizz.forEach((b, i) => { const ph = (t * 0.5 + i / 5) % 1; b.position.set(Math.sin(i * 2.3) * 0.12, 0.08 + ph * 0.6, Math.cos(i * 2.3) * 0.12); });
     }
+    // お題の中心:黄色い枠が脈打つ
+    this.markMeshes = this.markMeshes || [];
+    let mi = 0;
+    for (const [id, e] of this.ents) {
+      if (!e.mark || !game || !game.targets || !game.targets.some(T => !T.done && T.center === id)) continue;
+      let m = this.markMeshes[mi];
+      if (!m) { m = new THREE.LineLoop(this.hoverMesh.geometry, this.line(P.light, 1)); this.scene.add(m); this.markMeshes.push(m); }
+      m.visible = true; m.position.set(e.obj.position.x, 0.012, e.obj.position.z);
+      const k = 0.5 + 0.5 * Math.sin(t * 3); m.material.opacity = 0.35 + 0.5 * k; m.scale.setScalar(1.02 + 0.04 * k);
+      mi++;
+    }
+    for (; mi < this.markMeshes.length; mi++) this.markMeshes[mi].visible = false;
     if (this.hover && game && !game.over && !game.cells.has(this.hover)) { this.hoverMesh.visible = true; this.hoverMesh.position.copy(hexPos(this.hover)); }
     else this.hoverMesh.visible = false;
 

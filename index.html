@@ -29,6 +29,7 @@
       <div class="g" id="timeRow"><span class="gl">時間</span><div class="track"><i id="tbar"></i></div><span id="ttxt" class="gv">2:30</span></div>
       <div class="g" id="heatRow"><span class="gl" id="hlabel">熱</span><div class="track ticks"><i id="hbar"></i></div><span class="gv"><span id="htxt">0</span> kJ</span></div>
     </div>
+    <div class="targets" id="targets" aria-label="お題"></div>
     <div class="notes"><div class="hint" id="hint"></div><div class="guide" id="guide"></div></div>
     <div class="event" id="event" aria-live="polite"><div class="eq" id="eq"></div><div class="meta" id="meta"></div></div>
     <footer class="tray">
@@ -62,6 +63,7 @@
       </dl>
       <div class="stats"><span>自己ベスト <b id="bestStart">—</b></span><span>見つけた反応 <b id="foundStart">0</b></span></div>
       <button class="go" id="startBtn">はじめる</button>
+      <button class="sub-btn" data-book>図鑑</button>
       <details class="soundtest" id="soundTest"><summary>音の確認</summary><div class="slist" id="soundList"></div></details>
     </div>
   </section>
@@ -79,6 +81,16 @@
       <p class="lbl">今回起こした反応</p>
       <ul class="rlist" id="rList"></ul>
       <button class="go" id="againBtn">もう一度</button>
+      <button class="sub-btn" data-book>図鑑</button>
+    </div>
+  </section>
+
+  <section class="screen book" id="book" hidden>
+    <div class="sheet">
+      <div class="book-head"><p class="lbl">図鑑</p><span id="bookCount"></span></div>
+      <p class="book-note">見つけていない反応は、材料と条件だけを示しています。</p>
+      <div id="bookList"></div>
+      <button class="go" id="bookClose">閉じる</button>
     </div>
   </section>
 

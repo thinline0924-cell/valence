@@ -99,6 +99,17 @@ for (const N of NUCLEAR_LIST) if (N.nucl) {
   check(u <= 3 && pu <= 2, `fuel cap (U ${u}, Pu ${pu})`);
 }
 
+// お題:2つ選ばれ、中心の物質が盤にあり、その反応を起こすと達成になるか
+{
+  const g = new Game(); let hit = 0;
+  g.on((t, d) => { if (t === 'target') hit++; });
+  g.start(new Set());
+  check(g.targets.length === 2, 'two targets');
+  for (const T of g.targets) check([...g.cells.values()].some(e => e.id === T.center && e.sub === T.R.in[0]), `target center on board ${T.R.id}`);
+  const T = g.targets[0]; g.checkTarget(T.R.id, '0,0');
+  check(T.done && hit === 1, 'target completes');
+}
+
 // 自動プレイ
 for (const mode of ['random', 'greedy']) {
 let stats = { games: 0, reactions: 0, completes: 0, found: new Set(), maxChain: 0, fevers: 0, score: 0 };
