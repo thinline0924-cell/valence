@@ -15,7 +15,7 @@
   "bgm_main": {"file": "bgm_main.mp3", "loopLength": 126, "gain": 0.4},
   "bgm_fever": {"file": "bgm_fever.mp3", "gain": 0.4},
   "fizzle": {"file": "se_scatter.mp3", "gain": 1.2},
-  "collect": {"file": "se_complete.mp3", "rate": 1.25, "gain": 0.45, "trim": 0.05},
+  "collect": {"file": "se_pick.mp3", "gain": 0.8},
   "fever_off": {"file": "se_low_fade.mp3", "gain": 0.8},
   "need_heat": {"file": "se_low_pulse.mp3", "gain": 0.7},
   "start": {"file": "se_boom.mp3", "gain": 0.9},
