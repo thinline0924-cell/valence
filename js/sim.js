@@ -1,6 +1,6 @@
 // ゲームのルール本体(表示とは切り離してある)
 import { CELLS, SPECIAL, neighbors } from './board.js';
-import { ELEMENTS, SUBSTANCES, REACTIONS, NUCLEAR, FINAL, BUILDABLE, signature } from './chem.js';
+import { ELEMENTS, SUBSTANCES, REACTIONS, NUCLEAR, FINAL, BUILDABLE } from './chem.js';
 
 export const RULES = {
   time: 150,          // 制限時間(秒)
@@ -11,6 +11,8 @@ export const RULES = {
   tick: 0.5,          // 反応の判定の間隔(秒)
   tickFever: 0.28,    // 過熱中の間隔(温度が高いほど反応は速い)
   bias: 0.3,          // 組み立て中の分子に合う原子を配る確率
+  settle: 0.9,        // もっと大きな物質になれるとき、完成を待つ時間(秒)
+  settleFever: 0.6,
   fragLife: 12,       // 組み立て途中の原子が散るまで(秒。最後に原子を足してから数える)
   loneLife: 7,        // どことも結合していない原子1つが散るまで(秒)
   warnBefore: 3,      // 散る何秒前から点滅させるか
@@ -130,54 +132,47 @@ export class Game {
     return true;
   }
 
+  // 原子をつなぐ順番は問わない:となりの組み立て途中の原子とつながり、
+  // 原子の組み合わせが実在の物質と同じになると完成する(つながり方は完成したときに正しい形になる)
   placeAtom(el, key) {
-    const atom = { kind: 'atom', id: this.uid++, el, key, deg: 0, frag: null };
+    const atom = { kind: 'atom', id: this.uid++, el, key, frag: null };
     this.cells.set(key, atom);
     this.emit('place', { id: atom.id, el, key });
 
-    const nb = neighbors(key).map(k => this.cells.get(k))
-      .filter(e => e && e.kind === 'atom' && e.deg < ELEMENTS[e.el].v);
-    const best = this.bestMerge(atom, nb);
-    const frag = { id: this.uid++, atoms: [atom], edges: [], touched: this.t };
-    for (const n of best.with) {
-      const f = this.frags.get(n.frag);
-      if (f && f !== frag && this.frags.has(f.id)) {
-        frag.atoms.push(...f.atoms); frag.edges.push(...f.edges); this.frags.delete(f.id);
+    const nbAtoms = neighbors(key).map(k => this.cells.get(k)).filter(e => e && e.kind === 'atom');
+    const fids = [...new Set(nbAtoms.map(a => a.frag))];
+    let best = { fids: [], sub: null, score: 0 };
+    for (let mask = 1; mask < (1 << fids.length); mask++) {
+      const pick = fids.filter((_, i) => mask & (1 << i));
+      const counts = { [el]: 1 };
+      for (const fid of pick) for (const a of this.frags.get(fid).atoms) counts[a.el] = (counts[a.el] || 0) + 1;
+      if (!fitsSome(counts)) continue;
+      const sub = exactSub(counts);
+      const size = Object.values(counts).reduce((a, b) => a + b, 0);
+      const score = (sub ? 100 : 0) + size;
+      if (score > best.score) best = { fids: pick, sub, score };
+    }
+    const frag = { id: this.uid++, atoms: [atom], edges: [], touched: this.t, lastKey: key };
+    for (const fid of best.fids) {
+      const f = this.frags.get(fid);
+      frag.atoms.push(...f.atoms); frag.edges.push(...f.edges); this.frags.delete(fid);
+      if (f.settleAt) this.emit('settle', { atoms: f.atoms.map(a => a.id), on: false });
+      for (const n of nbAtoms.filter(a => a.frag === fid)) {
+        frag.edges.push([atom.id, n.id]);
+        this.emit('bond', { a: atom.id, b: n.id, ka: key, kb: n.key });
       }
-      frag.edges.push([atom.id, n.id]);
-      atom.deg++; n.deg++;
-      this.emit('bond', { a: atom.id, b: n.id, ka: key, kb: n.key });
     }
     for (const a of frag.atoms) a.frag = frag.id;
     this.frags.set(frag.id, frag);
-    if (best.sub) this.complete(frag, best.sub, key);
-  }
-
-  // となりの原子のうち、どれと結合するかを決める
-  bestMerge(atom, nb) {
-    const v = ELEMENTS[atom.el].v;
-    let best = { with: [], sub: null, score: 0 };
-    const n = nb.length;
-    for (let mask = 1; mask < (1 << n); mask++) {
-      const pick = nb.filter((_, i) => mask & (1 << i));
-      if (pick.length > v) continue;
-      const fids = pick.map(p => p.frag);
-      if (new Set(fids).size !== fids.length) continue; // 輪はつくらない
-      const atoms = [atom], edges = [];
-      for (const fid of fids) { const f = this.frags.get(fid); atoms.push(...f.atoms); edges.push(...f.edges); }
-      for (const p of pick) edges.push([atom.id, p.id]);
-      const counts = {};
-      for (const a of atoms) counts[a.el] = (counts[a.el] || 0) + 1;
-      if (!BUILDABLE.some(b => Object.entries(counts).every(([e, c]) => (b.counts[e] || 0) >= c))) continue;
-      let sub = null;
-      if (exactValence(atoms, edges)) {
-        sub = matchSubstance(atoms, edges, counts);
-        if (!sub) continue; // 手は埋まるが実在の形でない
-      }
-      const score = (sub ? 100 : 0) + atoms.length;
-      if (score > best.score) best = { with: pick, sub, score };
-    }
-    return best;
+    if (!best.sub) return;
+    // もっと大きな物質になれる組み合わせなら、少し待ってから完成させる(続けて原子を足せるように)
+    const counts = {};
+    for (const a of frag.atoms) counts[a.el] = (counts[a.el] || 0) + 1;
+    if (canGrow(counts)) {
+      frag.settleAt = this.t + (this.feverOn ? RULES.settleFever : RULES.settle);
+      frag.sub = best.sub;
+      this.emit('settle', { atoms: frag.atoms.map(a => a.id), on: true, dur: frag.settleAt - this.t });
+    } else this.complete(frag, best.sub, key);
   }
 
   complete(frag, subId, key) {
@@ -205,19 +200,21 @@ export class Game {
         const counts = {};
         for (const a of f.atoms) counts[a.el] = (counts[a.el] || 0) + 1;
         for (const el of Object.keys(ELEMENTS)) {
-          if (ELEMENTS[el].late && !this.lateOk(el)) continue;
+          if (!this.elOk(el)) continue;
           const c = { ...counts, [el]: (counts[el] || 0) + 1 };
           if (BUILDABLE.some(b => Object.entries(c).every(([e, n]) => (b.counts[e] || 0) >= n))) want.add(el);
         }
       }
       if (want.size) { const w = [...want]; return this.counted(w[Math.floor(Math.random() * w.length)]); }
     }
-    const list = Object.entries(ELEMENTS).filter(([el, e]) => !e.late || this.lateOk(el));
+    const list = Object.entries(ELEMENTS).filter(([el, e]) => this.elOk(el));
     const tot = list.reduce((s, [, e]) => s + e.w, 0);
     let r = Math.random() * tot;
     for (const [el, e] of list) { r -= e.w; if (r <= 0) return this.counted(el); }
     return 'H';
   }
+  // 元素は反応の回数(after)に応じて出はじめる。ウランとプルトニウムは数にも上限がある
+  elOk(el) { const e = ELEMENTS[el]; if (e.late) return this.lateOk(el); return !e.after || (this.cells && this.reactCount >= e.after); }
   lateOk(el) { return this.cells && this.nuclearOpen && this.lateCount[el] < RULES.fuelMax[el]; }
   counted(el) { if (ELEMENTS[el].late) this.lateCount[el]++; return el;
   }
@@ -301,6 +298,7 @@ export class Game {
     this.emit('react', { R, center: keys[0], consumed, products, escapes, pts, chain: this.chain, fever: this.feverOn, first });
     this.checkTarget(R.id, keys[0]);
     for (const p of products) this.learn(p.sub);
+    for (const [el, e] of Object.entries(ELEMENTS)) if (e.after === this.reactCount) this.emit('unlock', { els: [el] });
     if (this.reactCount === RULES.nuclearAfter) this.emit('unlock', { els: ['U', 'Pu'] });
   }
 
@@ -394,6 +392,7 @@ export class Game {
       this.heat = Math.max(0, this.heat - RULES.cool * dt);
     }
 
+    for (const f of [...this.frags.values()]) if (f.settleAt && this.t >= f.settleAt) { this.complete(f, f.sub, f.lastKey); this.schedule(RULES.tick * 0.6); }
     if (this.tickIn >= 0) { this.tickIn -= dt; if (this.tickIn < 0) this.tick(); }
     this.waterIn -= dt;
     if (this.waterIn <= 0) {
@@ -503,7 +502,8 @@ export const TIERS = [
   { after: 0,  subs: ['O2', 'NaOHaq', 'CaO', 'H2O2', 'CH4'] },
   { after: 5,  subs: ['HClaq', 'CO2', 'NH3', 'CH3OH', 'N2', 'Cl2'] },
   { after: 12, subs: ['C2H4', 'H2S', 'SO2', 'C2H5OH', 'CO', 'NO'] },
-  { after: 20, subs: ['SO3', 'NO2', 'C2H2', 'N2H4', 'NaHCO3aq', 'CH3COOH'] },
+  { after: 20, subs: ['SO3', 'NO2', 'C2H2', 'N2H4', 'NaHCO3aq', 'CH3COOH', 'CuSO4aq', 'Zn', 'Fe2O3', 'KBr'] },
+  { after: 28, subs: ['SiO2', 'CuO', 'Ag2O', 'MgO', 'PCl3', 'FeCl3aq'] },
 ];
 
 // お題の選び方:見つけていない反応のうち、材料が少なく条件の易しいものから
@@ -546,11 +546,8 @@ export function exactValence(atoms, edges) {
   return go(0);
 }
 
-function matchSubstance(atoms, edges, counts) {
-  const idx = new Map(atoms.map((a, i) => [a.id, i]));
-  const sig = signature(atoms.map(a => a.el), edges.map(([a, b]) => [idx.get(a), idx.get(b)]));
-  const keys = Object.keys(counts);
-  const b = BUILDABLE.find(b => b.sig === sig &&
-    Object.keys(b.counts).length === keys.length && keys.every(k => b.counts[k] === counts[k]));
-  return b ? b.id : null;
-}
+const fitsSome = counts => BUILDABLE.some(b => Object.entries(counts).every(([e, c]) => (b.counts[e] || 0) >= c));
+const sameCounts = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => a[k] === b[k]);
+const exactSub = counts => (BUILDABLE.find(b => sameCounts(b.counts, counts)) || {}).id || null;
+const canGrow = counts => BUILDABLE.some(b => !sameCounts(b.counts, counts) && Object.entries(counts).every(([e, c]) => (b.counts[e] || 0) >= c));
+

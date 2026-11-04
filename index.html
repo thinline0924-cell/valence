@@ -8,7 +8,7 @@
   <meta name="description" content="原子をつなぎ、反応を連鎖させる化学反応パズル。">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@200;300;400&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@200;300;400&family=Shippori+Mincho+B1:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
     { "imports": { "three": "./lib/three.module.min.js" } }
@@ -50,8 +50,8 @@
       <h1 class="logo">VALENCE</h1>
       <p class="sub">化学反応パズル</p>
       <ol class="rules">
-        <li><b>置く</b>マスを押すと、次の原子が置かれる。となりの原子と、手の数(点の数)だけ自動で結合する</li>
-        <li><b>完成</b>手がすべて埋まり実在の物質になると、その姿に変わる</li>
+        <li><b>置く</b>マスを押すと、次の原子が置かれる。となりの原子とつながる。つなぐ順番は自由</li>
+        <li><b>完成</b>つながった原子の組み合わせが実在の物質と同じになると、その姿に変わる。もっと大きな物質になれるときは、少し待ってから完成する</li>
         <li><b>反応</b>となり合った物質は、条件がそろうと反応する。生成物がさらに反応すると連鎖になり、その間は時計が止まる</li>
         <li><b>熱</b>発熱反応で熱がたまる。加熱マスでは熱を使って吸熱反応が起こせる。満タンになると過熱になり、反応が速く、得点は2倍。大きな燃焼の炎は、となりの燃えるものに燃え移る</li>
         <li><b>核</b>反応を重ねると、ウランとプルトニウムが出はじめる。二酸化ウランなどの燃料を2つ並べて水に接すると核分裂し、中性子がとなりの燃料に届いて連鎖する。使い終わった燃料はしばらくマスをふさぐ</li>
@@ -85,12 +85,21 @@
     </div>
   </section>
 
-  <section class="screen book" id="book" hidden>
-    <div class="sheet">
-      <div class="book-head"><p class="lbl">図鑑</p><span id="bookCount"></span></div>
-      <p class="book-note">見つけていない反応は、材料と条件だけを示しています。</p>
-      <div id="bookList"></div>
-      <button class="go" id="bookClose">閉じる</button>
+  <section class="desk" id="book" hidden aria-label="図鑑">
+    <div class="tome">
+      <div class="page" id="bookPage">
+        <header class="title-page">
+          <p class="t-series">VALENCE</p>
+          <h2 class="t-name">反応辞典</h2>
+          <p class="t-rule"></p>
+          <p class="t-count">収録 <b id="bookCount"></b></p>
+          <p class="t-note">見つけていない反応は、材料と条件のみを記し「未収録」とする。</p>
+        </header>
+        <div class="entries" id="bookList"></div>
+        <p class="colophon">標準生成エンタルピーは 25 °C・1 bar の値による</p>
+      </div>
+      <nav class="tabs" id="bookTabs" aria-label="章"></nav>
+      <button class="ribbon" id="bookClose">閉じる</button>
     </div>
   </section>
 

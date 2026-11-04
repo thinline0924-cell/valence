@@ -50,6 +50,13 @@ function greedy(game) {
   return best;
 }
 
+// 組み立てられる物質は組成で見分けるので、同じ組成の物質が2つあってはいけない
+{ const seen = new Map(); for (const b of BUILDABLE) { const k = JSON.stringify(Object.entries(b.counts).sort()); check(!seen.has(k), `same composition ${b.id} ${seen.get(k)}`); seen.set(k, b.id); } }
+// 組成が原子価に合うか(手の合計が偶数で、木の形にできる以上の手がある)
+for (const b of BUILDABLE) {
+  const s = SUBSTANCES[b.id]; const atoms = s.mol.atoms.map((el, i) => ({ id: i, el }));
+  check(exactValence(atoms, s.mol.edges), `valence of ${b.id}`);
+}
 // 反応に出てくる物質がすべて定義されているか
 for (const R of REACTIONS) for (const x of [...R.in, ...R.out]) check(SUBSTANCES[x], `unknown substance ${x} in ${R.id}`);
 // 核反応の質量数と原子番号がそろっているか

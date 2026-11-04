@@ -149,10 +149,13 @@ export class View {
       drop: (() => { const pts = [];
         for (let i = 0; i <= 48; i++) { const a = Math.PI * (1 - i / 48); pts.push(new THREE.Vector2(Math.sin(a) * Math.pow(Math.sin(a / 2), 1.6) * 0.5, (1 - Math.cos(a)) * 0.5 * 1.2)); }
         return new THREE.LatheGeometry(pts, 40); })(),
+      ingot: (() => { const g = new THREE.CylinderGeometry(0.2, 0.28, 0.16, 4, 1); g.rotateY(Math.PI / 4); g.scale(1.5, 1, 0.8); return g; })(),
       pellet: new THREE.CylinderGeometry(0.17, 0.17, 0.34, 24),
       pelletEdge: new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.17, 0.17, 0.34, 24), 30),
+      ingotEdge: null,
       rhomb: (() => { const g = new THREE.BoxGeometry(1, 1, 1); g.applyMatrix4(new THREE.Matrix4().makeShear(0.32, 0, 0.18, 0, 0, 0)); return g; })(),
     };
+    this.g.ingotEdge = new THREE.EdgesGeometry(this.g.ingot);
     this.white = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
     this.barMat = this.toon(P.cream);
     this.texCache = new Map();
@@ -244,6 +247,13 @@ export class View {
         m.add(new THREE.LineSegments(this.g.pelletEdge, this.line(0x8b8272, 0.55))); body.add(m);
       }
       if (s.fuel) g.userData.fuel = true;
+    } else if (s.form === 'metal') {
+      // 金属:小さな延べ棒
+      const mat = this.toon(s.color, { emissive: s.color, emissiveIntensity: 0.08 });
+      for (const [x, z, ry, y] of [[0, 0, 0.3, 0], [0.12, 0.2, -0.4, 0], [-0.05, 0.08, 0.1, 0.16]]) {
+        const m = new THREE.Mesh(this.g.ingot, mat); m.position.set(x, 0.08 + y, z); m.rotation.y = ry; m.castShadow = true;
+        m.add(new THREE.LineSegments(this.g.ingotEdge, this.line(0xffffff, 0.35))); body.add(m);
+      }
     } else if (s.form === 'lump') {
       const mat = this.toon(s.color);
       for (const [sz, x, z] of [[1, 0, 0], [0.6, 0.3, 0.16], [0.5, -0.26, 0.18]]) {
@@ -431,6 +441,7 @@ export class View {
       case 'needHeat': this.ring(d.key, P.heat, 0.4); break;
       case 'targetMark': { const e = this.ents.get(d.id); if (e) e.mark = d.on; break; }
       case 'target': this.ring(d.key, P.light, 2.2); this.floatText(d.key, `お題 +${d.pts}`, 'target'); break;
+      case 'settle': for (const id of d.atoms) { const e = this.ents.get(id); if (e) e.settle = d.on ? { t0: performance.now(), dur: d.dur * 1000 } : null; } break;
       case 'fragWarn': for (const id of d.atoms) { const e = this.ents.get(id); if (e) e.warn = performance.now(); } break;
       case 'hint': this.hintKey = d.key; this.hintMesh.visible = !!d.key; if (d.key) this.hintMesh.position.copy(hexPos(d.key)).setY(0.01); break;
       case 'fever': this.warmGoal = d.on ? 1 : 0; break;
@@ -556,6 +567,7 @@ export class View {
         if (ch.userData.decal) { ch.rotation.y = az; ch.rotation.x = -Math.PI / 2; }
         if (ch.userData.tag) { ch.rotation.y = az; ch.rotation.x = -Math.PI / 2; ch.position.set(Math.sin(az) * 0.5, 0.006, Math.cos(az) * 0.5); }
       }
+      if (e.settle) { const k = Math.min(1, (performance.now() - e.settle.t0) / e.settle.dur); o.scale.setScalar(1 + 0.07 * Math.sin(k * Math.PI * 3)); if (k >= 1) { e.settle = null; o.scale.setScalar(1); } }
       if (e.warn) { const on = Math.sin((performance.now() - e.warn) / 1000 * Math.PI * 4) > -0.2; o.visible = on; }
       if (o.userData.sub === 'FP' && e.spent == null) e.spent = performance.now();
       if (e.spent != null) { const k = Math.min(1, (performance.now() - e.spent) / 15000); o.userData.body.children.forEach(m => { if (m.material?.emissive) m.material.emissiveIntensity = 0.6 * (1 - k); }); }

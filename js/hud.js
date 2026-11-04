@@ -1,5 +1,5 @@
 // 画面の上と下の表示(スコア・連鎖・時間・熱・次の原子・反応の記録)と、開始・結果の画面
-import { ELEMENTS, ALL_REACTIONS, REACTIONS, NUCLEAR_LIST, SUBSTANCES, fmt } from './chem.js';
+import { ELEMENTS, ALL_REACTIONS, REACTIONS, NUCLEAR_LIST, SUBSTANCES, CHAPTERS, fmt } from './chem.js';
 import { RULES } from './sim.js';
 
 const byId = id => document.getElementById(id);
@@ -23,7 +23,7 @@ export class Hud {
     if (type === 'fever') document.documentElement.classList.toggle('fever', d.on);
     if (type === 'needHeat') this.hint(`熱が ${d.need} kJ 必要`);
     if (type === 'hint') this.guide(d.key ? `光っている加熱マスに ${d.el} を置くと、連鎖が始まります` : '');
-    if (type === 'unlock') this.hint('ウランとプルトニウムが出るようになりました', 2600);
+    if (type === 'unlock') this.unlockMsg(d.els);
     if (type === 'tier') this.hint('補給される試薬が増えました', 2000);
     if (type === 'targets' || type === 'target') this.showTargets(d.list);
     if (type === 'learn') this.hint(`${SUBSTANCES[d.sub].name}は、${needText(d.rest)}と${COND[d.cond]}反応する`, 2600, 'learn');
@@ -47,6 +47,13 @@ export class Hud {
     const h = byId('hint'); h.textContent = text; h.className = 'hint show ' + cls;
     clearTimeout(this.hT); this.hT = setTimeout(() => h.classList.remove('show'), ms);
   }
+  // 同じ時に解放された元素をまとめて知らせる
+  unlockMsg(els) {
+    this.unlocked = (this.unlocked || []).concat(els);
+    clearTimeout(this.uT);
+    this.uT = setTimeout(() => { this.hint(`${this.unlocked.map(e => ELEMENTS[e].name).join('・')}が出るようになりました`, 2600); this.unlocked = []; }, 50);
+  }
+
   showTargets(list) {
     byId('targets').innerHTML = list.map(T => T.done
       ? `<div class="tg done"><span class="gl">お題</span><span class="need">${T.R.name}</span><span class="st">達成</span></div>`
@@ -55,16 +62,23 @@ export class Hud {
 
   openBook() {
     const known = this.foundAll;
-    const cats = [['燃焼', 'c2h4_burn'], ['有機化学', 'etoh_ox'], ['硫黄と窒素', 'claus'], ['無機化学', 'h2o2_dec']];
-    let html = '';
-    REACTIONS.forEach(R => {
-      const c = cats.find(c => c[1] === R.id); if (c) html += `<p class="bk-cat">${c[0]}</p>`;
-      html += bookItem(R, known.has(R.id));
+    const chapters = [...CHAPTERS, ['核反応', NUCLEAR_LIST[0].id]];
+    const all = [...REACTIONS, ...NUCLEAR_LIST];
+    let html = '', tabs = '', part = 0, ch = null;
+    all.forEach((R, i) => {
+      const c = chapters.find(c => c[1] === R.id);
+      if (c) {
+        part++; ch = c[0];
+        html += `<h3 class="part" id="part${part}"><span class="pn">第${KANJI[part]}部</span>${c[0]}</h3>`;
+        tabs += `<a href="#part${part}" data-part="${part}" title="${c[0]}">${KANJI[part]}</a>`;
+      }
+      html += bookItem(R, known.has(R.id), i + 1, ch);
     });
-    html += '<p class="bk-cat">核反応</p>' + NUCLEAR_LIST.map(R => bookItem(R, known.has(R.id))).join('');
     byId('bookList').innerHTML = html;
-    byId('bookCount').textContent = `${known.size} / ${ALL_REACTIONS.length}`;
+    byId('bookTabs').innerHTML = tabs;
+    byId('bookCount').textContent = `${known.size} / ${all.length} 項`;
     byId('book').hidden = false;
+    byId('bookPage').scrollTop = 0;
   }
 
   // 最初の一手の案内(置くまで出しておく)
@@ -124,9 +138,20 @@ function needText(list) {
   for (const x of list) n[x] = (n[x] || 0) + 1;
   return Object.entries(n).map(([x, c]) => SUBSTANCES[x].name + (c > 1 ? ` ×${c}` : '')).join(' + ');
 }
-function bookItem(R, known) {
-  const cond = R.cond && R.cond !== 'none' ? `条件:${COND_TAG[R.cond]}` : '';
-  if (known) return `<div class="bk"><span class="n">${R.name}</span><span class="e">${R.nuclear ? R.eq : fmt(R.eq)}</span>${R.note ? `<span class="c">${R.note}</span>` : ''}</div>`;
-  const need = R.nuclear ? (R.id === 'breed' ? '二酸化ウラン + 中性子(水に接していない)' : `${SUBSTANCES[R.fuel].name} + 燃料 + 水`) : needText(R.in);
-  return `<div class="bk unknown"><span class="n">未発見</span><span class="e">${need} → ?</span>${cond ? `<span class="c">${cond}</span>` : ''}</div>`;
+const KANJI = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+const num = n => String(n).padStart(3, '0');
+function bookItem(R, known, n, ch) {
+  const cond = R.cond && R.cond !== 'none' ? COND_TAG[R.cond] : '';
+  const heat = R.nuclear ? (R.id === 'breed' ? '' : '約 200 MeV/核') : `${R.dH < 0 ? '−' : '+'}${Math.abs(R.dH)} kJ`;
+  if (known) return `<article class="entry">
+    <p class="hw"><span class="no">${num(n)}</span>${R.name}</p>
+    <p class="eq">${R.nuclear ? R.eq : fmt(R.eq)}</p>
+    <p class="data">${heat ? `<span><i>熱</i>${heat}</span>` : ''}${cond ? `<span><i>条件</i>${cond}</span>` : ''}</p>
+    ${R.note ? `<p class="gloss">${R.note}</p>` : ''}
+  </article>`;
+  const need = R.nuclear ? (R.id === 'breed' ? '二酸化ウラン、中性子(水に接していないこと)' : `${SUBSTANCES[R.fuel].name}、ほかの燃料、水`) : needText(R.in).replace(/ \+ /g, '、');
+  return `<article class="entry unknown">
+    <p class="hw"><span class="no">${num(n)}</span><span class="blank"></span><span class="stamp">未収録</span></p>
+    <p class="data"><span><i>材料</i>${need}</span>${cond ? `<span><i>条件</i>${cond}</span>` : ''}</p>
+  </article>`;
 }

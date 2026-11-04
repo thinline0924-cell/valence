@@ -49,6 +49,11 @@ function start() {
 $('startBtn').onclick = start;
 document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => { audio.unlock(); audio.play('ui'); hud.openBook(); });
 $('bookClose').onclick = () => { audio.play('ui'); $('book').hidden = true; };
+$('bookTabs').addEventListener('click', e => {
+  const a = e.target.closest('a'); if (!a) return;
+  e.preventDefault();
+  document.getElementById('part' + a.dataset.part)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+});
 
 // 音の確認(開始画面):割り当てた音を1つずつ鳴らす
 $('soundTest').addEventListener('toggle', () => {
