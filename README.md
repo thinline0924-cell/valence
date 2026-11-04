@@ -14,7 +14,7 @@
 - **特殊なマス**:加熱(燃焼の点火、吸熱反応)、光、触媒
 - **回す**:盤を横にドラッグするか、右下の ‹ › ボタンで、60°ずつ回せます
 
-制限時間は2分30秒です。
+制限時間は2分30秒です。結果はランキングに記録できます(全員で共有するには `docs/ranking.md` の設定が必要)。
 
 ## 手元で動かす
 
@@ -46,6 +46,8 @@ python3 -m http.server 8000
 | `js/audio.js` | 効果音と BGM |
 | `js/main.js` | 入り口。上のものをつなぐ |
 | `docs/chemistry.md` | 化学の扱い(正しさの方針・単純化・反応の一覧) |
+| `docs/ranking.md` | ランキングの設定(Supabase) |
+| `js/rank.js` / `js/config.js` | ランキングと、その設定 |
 | `docs/sound.md` | 用意してほしい効果音と BGM の一覧 |
 | `tools/reaction-table.js` | `docs/chemistry.md` の反応の一覧を作る |
 | `assets/sound/` | 効果音と BGM。`manifest.json` で場面に割り当てる |

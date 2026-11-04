@@ -247,6 +247,8 @@ export class View {
         m.add(new THREE.LineSegments(this.g.pelletEdge, this.line(0x8b8272, 0.55))); body.add(m);
       }
       if (s.fuel) g.userData.fuel = true;
+    } else if (FORMS[s.form]) {
+      FORMS[s.form].call(this, body, s, g);
     } else if (s.form === 'metal') {
       // 金属:小さな延べ棒
       const mat = this.toon(s.color, { emissive: s.color, emissiveIntensity: 0.08 });
@@ -574,6 +576,7 @@ export class View {
       if (o.userData.float != null) o.userData.body.position.y = o.userData.float + Math.sin(t * 1.4 + e.born) * 0.04;
       if (o.userData.rim) o.userData.rim.lookAt(this.camera.position);
       if (o.userData.spin) o.userData.spin.rotation.y = t;
+      if (o.userData.puffs) o.userData.puffs.forEach((b, i) => { const ph = (t * 0.35 + i / 6) % 1; b.position.set(Math.sin(i * 1.7 + ph * 2) * 0.18 * ph, 0.25 + ph * 0.8, Math.cos(i * 1.7) * 0.18 * ph); b.scale.setScalar(0.08 + ph * 0.16); b.material.opacity = 0.5 * Math.sin(Math.PI * ph); });
       if (o.userData.fizz) o.userData.fizz.forEach((b, i) => { const ph = (t * 0.5 + i / 5) % 1; b.position.set(Math.sin(i * 2.3) * 0.12, 0.08 + ph * 0.6, Math.cos(i * 2.3) * 0.12); });
     }
     // お題の中心:黄色い枠が脈打つ
@@ -613,3 +616,118 @@ export class View {
     }
   }
 }
+
+/* ---------- 物質の姿(追加分) ----------
+   実験室や身近な場面で見かける姿にする:試薬びん、水晶、宝石、針状の結晶、銅線、くぎ、粒、ビーカーの沈殿、錠剤、白煙 */
+const glassMat = (v, color = 0xdfe9ec, opacity = 0.32) => v.toon(color, { transparent: true, opacity, depthWrite: false });
+const FORMS = {
+  // 試薬びん:中の液体の色が見える。光で分解する硝酸・過酸化水素は褐色びん、ガラスを溶かすフッ化水素酸はポリびん
+  bottle(body, s) {
+    const glass = s.bottle === 'brown' ? glassMat(this, 0x6b4426, 0.55) : s.bottle === 'poly' ? this.toon(0xe9e6dc) : glassMat(this);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.42, 28), glass); b.position.y = 0.21; body.add(b);
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.2, 0.12, 28), glass); sh.position.y = 0.48; body.add(sh);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 20), glass); neck.position.y = 0.58; body.add(neck);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.09, 20), this.toon(s.bottle === 'poly' ? 0x3f82d6 : 0x2f3a44)); cap.position.y = 0.66; cap.castShadow = true; body.add(cap);
+    if (s.bottle !== 'poly') { const liq = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.175, 0.28, 28), this.toon(s.color)); liq.position.y = 0.15; body.add(liq); }
+    const label = new THREE.Mesh(new THREE.CylinderGeometry(0.203, 0.203, 0.14, 28, 1, true, -0.9, 1.8), this.toon(0xf4efe2, { side: THREE.DoubleSide }));
+    label.position.y = 0.24; body.add(label);
+    b.castShadow = true;
+  },
+  // アンプル:臭素のように揮発しやすく危険な液体を封じる
+  ampoule(body, s) {
+    const glass = glassMat(this);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.36, 24), glass); b.position.y = 0.2; body.add(b);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.26, 24), glass); tip.position.y = 0.51; body.add(tip);
+    const liq = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.24, 24), this.toon(s.color)); liq.position.y = 0.14; body.add(liq);
+    const vap = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.1, 24), this.toon(s.color, { transparent: true, opacity: 0.35, depthWrite: false })); vap.position.y = 0.31; body.add(vap);
+  },
+  // 水晶:六角柱の先がとがった結晶の群れ(二酸化ケイ素)
+  quartz(body, s) {
+    const mat = this.toon(s.color, { transparent: true, opacity: 0.82 });
+    for (const [h, x, z, tx, tz] of [[0.5, 0, 0, 0, 0], [0.34, 0.17, 0.1, 0.35, 0.25], [0.28, -0.15, 0.12, -0.3, 0.3], [0.22, 0.05, -0.16, 0.1, -0.4]]) {
+      const g = new THREE.Group();
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, h, 6), mat); col.position.y = h / 2; g.add(col);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.14, 6), mat); tip.position.y = h + 0.07; g.add(tip);
+      g.add(new THREE.LineSegments(new THREE.EdgesGeometry(col.geometry), this.line(0xffffff, 0.5)).translateY(h / 2));
+      g.position.set(x, 0, z); g.rotation.set(tx, 0, tz); col.castShadow = true; body.add(g);
+    }
+  },
+  // 宝石:六方両錐の結晶(酸化アルミニウム。不純物でルビーやサファイアになる)
+  gem(body, s) {
+    const mat = this.toon(s.color, { transparent: true, opacity: 0.88 });
+    for (const [sz, x, z, ry] of [[1, 0, 0, 0.2], [0.55, 0.26, 0.16, 0.9]]) {
+      const top = new THREE.Mesh(new THREE.ConeGeometry(0.2 * sz, 0.26 * sz, 6), mat); top.position.set(x, 0.39 * sz, z);
+      const bot = new THREE.Mesh(new THREE.ConeGeometry(0.2 * sz, 0.26 * sz, 6), mat); bot.rotation.x = Math.PI; bot.position.set(x, 0.13 * sz, z);
+      top.rotation.y = bot.rotation.y = ry; top.castShadow = true;
+      body.add(top, bot);
+      for (const m of [top, bot]) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), this.line(0xffffff, 0.55)));
+    }
+  },
+  // 針状の結晶:中心から放射状に伸びる(石こう、リン酸アンモニウム)
+  needles(body, s) {
+    const mat = this.toon(s.color);
+    for (let i = 0; i < 11; i++) {
+      const a = i * 2.4, up = 0.4 + (i % 3) * 0.35, len = 0.3 + (i % 4) * 0.05;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.035, len, 0.035), mat);
+      const d = new THREE.Vector3(Math.cos(a) * Math.cos(up), Math.sin(up), Math.sin(a) * Math.cos(up));
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
+      m.position.copy(d.multiplyScalar(len / 2)).setY(0.04 + Math.sin(up) * len / 2); m.castShadow = true; body.add(m);
+    }
+  },
+  // 銅線:ぐるぐる巻いた赤銅色の線
+  coil(body, s) {
+    const pts = [];
+    for (let i = 0; i <= 120; i++) { const t = i / 120, a = t * Math.PI * 2 * 4.5; pts.push(new THREE.Vector3(Math.cos(a) * 0.2, 0.05 + t * 0.32, Math.sin(a) * 0.2)); }
+    pts.push(new THREE.Vector3(0.32, 0.38, 0.05));
+    const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 200, 0.022, 8), this.toon(s.color, { emissive: s.color, emissiveIntensity: 0.12 }));
+    m.castShadow = true; body.add(m);
+  },
+  // 鉄くぎ
+  nails(body, s) {
+    const mat = this.toon(s.color, { emissive: s.color, emissiveIntensity: 0.06 });
+    for (const [x, z, ry, y] of [[0, 0, 0.3, 0.03], [0.04, 0.08, -0.6, 0.07], [-0.06, -0.06, 1.3, 0.11]]) {
+      const n = new THREE.Group();
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.52, 10), mat); shaft.rotation.z = Math.PI / 2; n.add(shaft);
+      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 16), mat); head.rotation.z = Math.PI / 2; head.position.x = -0.26; n.add(head);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.06, 10), mat); tip.rotation.z = -Math.PI / 2; tip.position.x = 0.29; n.add(tip);
+      n.position.set(x, y, z); n.rotation.y = ry; shaft.castShadow = true; body.add(n);
+    }
+  },
+  // 粒状の金属(実験で使う亜鉛粒)
+  granules(body, s) {
+    const mat = this.toon(s.color, { emissive: s.color, emissiveIntensity: 0.08 });
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.1, rr = 0.06 + (i % 4) * 0.06, m = new THREE.Mesh(this.g.lump, mat);
+      m.scale.set(0.32, 0.22, 0.28).multiplyScalar(0.8 + (i % 3) * 0.15); m.rotation.set(i, i * 2, 0);
+      m.position.set(Math.cos(a) * rr, 0.06 + (i > 6 ? 0.08 : 0), Math.sin(a) * rr); m.castShadow = true; body.add(m);
+    }
+  },
+  // ビーカーの中の沈殿:上ずみと、底にたまった色のついた沈殿
+  beaker(body, s) {
+    const glass = glassMat(this, 0xdfe9ec, 0.28);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.22, 0.5, 30, 1, true), glass); wall.position.y = 0.25; body.add(wall);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.012, 6, 30), this.toon(0xffffff)); rim.rotation.x = Math.PI / 2; rim.position.y = 0.5; body.add(rim);
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.215, 0.3, 30), this.toon(0x9ad3e6, { transparent: true, opacity: 0.45, depthWrite: false })); water.position.y = 0.17; body.add(water);
+    const sed = new THREE.Mesh(new THREE.CylinderGeometry(0.212, 0.205, 0.08, 30), this.toon(s.color)); sed.position.y = 0.05; body.add(sed);
+    const fl = new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: 0.7, depthWrite: false });
+    for (let i = 0; i < 7; i++) { const f = new THREE.Mesh(this.g.sphere, fl); f.scale.setScalar(0.025); f.position.set(Math.sin(i * 2.3) * 0.13, 0.12 + (i % 3) * 0.06, Math.cos(i * 2.3) * 0.13); body.add(f); }
+    wall.castShadow = true;
+  },
+  // 錠剤(水酸化マグネシウムは胃薬に使われる)
+  tablet(body, s) {
+    const mat = this.toon(s.color);
+    const geo = new THREE.CylinderGeometry(0.15, 0.15, 0.06, 28);
+    for (const [x, y, z, rx] of [[0, 0.03, 0, 0], [0, 0.09, 0, 0], [0, 0.15, 0, 0], [0.26, 0.05, 0.1, 1.2], [-0.2, 0.03, 0.2, 0]]) {
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true;
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 40), this.line(0xb7ae9c, 0.7))); body.add(m);
+    }
+  },
+  // 白煙:塩化アンモニウムの細かい結晶が煙のように漂う
+  smoke(body, s, g) {
+    const mat = this.toon(s.color);
+    for (let i = 0; i < 9; i++) { const m = new THREE.Mesh(this.g.sphere, mat); const a = i * 2.4, rr = 0.05 + (i / 9) * 0.22; m.scale.setScalar(0.08 - i * 0.004); m.position.set(Math.cos(a) * rr, 0.06 + (1 - i / 9) * 0.1, Math.sin(a) * rr); body.add(m); }
+    const puff = this.toon(0xf6f3ec, { transparent: true, opacity: 0.55, depthWrite: false });
+    g.userData.puffs = [];
+    for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(this.g.sphere, puff.clone()); body.add(m); g.userData.puffs.push(m); }
+  },
+};

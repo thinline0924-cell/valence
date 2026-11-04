@@ -63,7 +63,7 @@
       </dl>
       <div class="stats"><span>自己ベスト <b id="bestStart">—</b></span><span>見つけた反応 <b id="foundStart">0</b></span></div>
       <button class="go" id="startBtn">はじめる</button>
-      <button class="sub-btn" data-book>図鑑</button>
+      <div class="btn-row"><button class="sub-btn" data-book>図鑑</button><button class="sub-btn" data-rank>ランキング</button></div>
       <details class="soundtest" id="soundTest"><summary>音の確認</summary><div class="slist" id="soundList"></div></details>
     </div>
   </section>
@@ -80,8 +80,22 @@
       </div>
       <p class="lbl">今回起こした反応</p>
       <ul class="rlist" id="rList"></ul>
+      <form class="submit" id="rankForm" autocomplete="off">
+        <label class="lbl" for="rankName">名前を入れて記録する</label>
+        <div class="submit-row"><input id="rankName" maxlength="12" placeholder="12文字まで" enterkeyhint="send"><button type="submit" id="rankSend">記録</button></div>
+      </form>
+      <p class="rank-status" id="rankStatus" aria-live="polite"></p>
       <button class="go" id="againBtn">もう一度</button>
-      <button class="sub-btn" data-book>図鑑</button>
+      <div class="btn-row"><button class="sub-btn" data-book>図鑑</button><button class="sub-btn" data-rank>ランキング</button></div>
+    </div>
+  </section>
+
+  <section class="screen" id="ranking" hidden aria-label="ランキング">
+    <div class="sheet">
+      <p class="lbl">ランキング</p>
+      <p class="rank-scope" id="rankScope"></p>
+      <ol class="rank-list" id="rankList"></ol>
+      <button class="go" id="rankClose">閉じる</button>
     </div>
   </section>
 
