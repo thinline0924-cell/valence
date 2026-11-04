@@ -9,6 +9,7 @@ const FLOOR = 0.07;
 export const hexPos = key => { const [q, r] = parseKey(key); return V(HS * Math.sqrt(3) * (q + r / 2), 0, HS * 1.5 * r); };
 
 const P = {
+  nuke: 0x8fd0ff,
   slate: 0x2f3a44, table: 0x28313a, base: 0x55616b, cell: 0x3d4954, cream: 0xefe6d3, heat: 0xf08a3c, light: 0xf2df8a,
   warmSlate: 0x3f3634, warmTable: 0x33292a, warmCell: 0x4d4140,
 };
@@ -122,11 +123,15 @@ export class View {
       const l = new THREE.PointLight(P.heat, 0, 4, 2); l.position.copy(hexPos(k)).setY(0.4); s.add(l); return l;
     });
     this.heatGlow = 0;
+    this.nukeLight = new THREE.PointLight(P.nuke, 0, 9, 1.6); s.add(this.nukeLight); this.nukeGlow = 0;
 
     // 置ける場所の目印(パソコンのマウス用)
     this.hoverMesh = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
       Array.from({ length: 6 }, (_, i) => { const a = i * Math.PI / 3; return V(Math.sin(a) * HS * 0.9, 0.08, Math.cos(a) * HS * 0.9); })), this.line(P.cream, 0.9));
     this.hoverMesh.visible = false; s.add(this.hoverMesh);
+    // 最初の一手の案内
+    this.hintMesh = new THREE.LineLoop(this.hoverMesh.geometry, this.line(P.cream, 1));
+    this.hintMesh.visible = false; s.add(this.hintMesh);
   }
 
   buildShared() {
@@ -144,6 +149,8 @@ export class View {
       drop: (() => { const pts = [];
         for (let i = 0; i <= 48; i++) { const a = Math.PI * (1 - i / 48); pts.push(new THREE.Vector2(Math.sin(a) * Math.pow(Math.sin(a / 2), 1.6) * 0.5, (1 - Math.cos(a)) * 0.5 * 1.2)); }
         return new THREE.LatheGeometry(pts, 40); })(),
+      pellet: new THREE.CylinderGeometry(0.17, 0.17, 0.34, 24),
+      pelletEdge: new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.17, 0.17, 0.34, 24), 30),
       rhomb: (() => { const g = new THREE.BoxGeometry(1, 1, 1); g.applyMatrix4(new THREE.Matrix4().makeShear(0.32, 0, 0.18, 0, 0, 0)); return g; })(),
     };
     this.white = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
@@ -229,6 +236,14 @@ export class View {
         const a = i * 0.9, rr = i ? 0.22 : 0, m = new THREE.Mesh(this.g.sphere, mat);
         m.scale.set(0.11, 0.065, 0.11); m.position.set(Math.cos(a) * rr, 0.07 + (i ? 0 : 0.09), Math.sin(a) * rr); m.castShadow = true; body.add(m);
       }
+    } else if (s.form === 'pellet') {
+      // 燃料ペレット:焼き固めた円柱
+      const mat = this.toon(s.color, s.glow ? { emissive: 0xff7a2a, emissiveIntensity: 0.35 } : {});
+      for (const [x, y, z, rx, rz] of [[0, 0.17, 0, 0, 0], [0.26, 0.17, 0.12, 0, 0], [-0.14, 0.17, 0.27, 0, 0], [0.1, 0.42, 0.08, 0.2, 0.3]]) {
+        const m = new THREE.Mesh(this.g.pellet, mat); m.position.set(x, y + (y > 0.3 ? 0 : 0), z); m.rotation.set(rx, 0, rz); m.castShadow = true;
+        m.add(new THREE.LineSegments(this.g.pelletEdge, this.line(0x8b8272, 0.55))); body.add(m);
+      }
+      if (s.fuel) g.userData.fuel = true;
     } else if (s.form === 'lump') {
       const mat = this.toon(s.color);
       for (const [sz, x, z] of [[1, 0, 0], [0.6, 0.3, 0.16], [0.5, -0.26, 0.18]]) {
@@ -288,7 +303,7 @@ export class View {
   steam(pos, n = 6) {
     const mat = new THREE.MeshBasicMaterial({ color: P.cream, transparent: true, depthWrite: false });
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(this.g.sphere, mat.clone()); m.position.copy(pos); this.scene.add(m);
+      const m = new THREE.Mesh(this.g.sphere, mat.clone()); m.position.copy(pos); m.scale.setScalar(0.001); m.material.opacity = 0; this.scene.add(m);
       const dx = (Math.random() - .5) * 0.5, dz = (Math.random() - .5) * 0.5;
       this.tween(1.1, k => { m.position.set(pos.x + dx * k, pos.y + 0.4 + k * 1.6, pos.z + dz * k); m.scale.setScalar(0.07 + k * 0.12); m.material.opacity = Math.sin(Math.PI * k) * 0.55; },
         () => this.scene.remove(m), i * 0.08);
@@ -379,6 +394,7 @@ export class View {
         break;
       }
       case 'react': {
+        if (d.R.nuclear) { this.nuclearFx(d); break; }
         const hot = d.R.dH < 0, big = Math.min(1, Math.abs(d.R.dH) / 900);
         const center = hexPos(d.center).setY(0.4);
         for (const c of d.consumed) this.gather(c.id, d.center, 0.18);
@@ -414,8 +430,29 @@ export class View {
         break;
       }
       case 'needHeat': this.ring(d.key, P.heat, 0.4); break;
+      case 'hint': this.hintKey = d.key; this.hintMesh.visible = !!d.key; if (d.key) this.hintMesh.position.copy(hexPos(d.key)).setY(0.01); break;
       case 'fever': this.warmGoal = d.on ? 1 : 0; break;
     }
+  }
+
+  // 核分裂:水の中で光る青白い光(チェレンコフ光)と、大きな衝撃
+  nuclearFx(d) {
+    const center = hexPos(d.center).setY(0.4), fission = d.R.id !== 'breed';
+    for (const c of d.consumed) this.gather(c.id, d.center, 0.14);
+    d.products.forEach((p, i) => this.popIn(p.id, p.sub, p.key, 0.2 + i * 0.05));
+    setTimeout(() => {
+      if (fission) {
+        this.ring(d.center, P.nuke, 3.2); this.ring(d.center, 0xffffff, 1.6);
+        this.burst(center, P.nuke, 40, 2.2); this.burst(center, 0xffffff, 16, 1.2);
+        this.nukeGlow = 1; this.nukeAt = center;
+        if (!this.reduce) this.shake = Math.max(this.shake, 0.26);
+        for (const e of d.escapes) this.escapeBubble(d.center, e);
+      } else {
+        this.ring(d.center, 0xd9b36a, 1.2);
+      }
+      for (const p of d.products) this.flashName(p.id);
+      this.floatText(d.center, `+${d.pts.toLocaleString('en-US')}`, fission ? 'nuke' : '');
+    }, 140);
   }
 
   escapeBubble(key, sub) {
@@ -492,7 +529,7 @@ export class View {
     }
     this.camera.lookAt(this.target);
 
-    // 臨界中の暖色
+    // 過熱中の暖色
     this.warm += (this.warmGoal - this.warm) * Math.min(1, dt * 2.5);
     this.bg.set(P.slate).lerp(new THREE.Color(P.warmSlate), this.warm);
     this.tableMat.color.set(P.table).lerp(new THREE.Color(P.warmTable), this.warm);
@@ -504,6 +541,10 @@ export class View {
     const g = Math.max(heatOn, this.heatGlow);
     this.heatMats.forEach(m => m.emissiveIntensity = g * 0.9);
     this.heatLights.forEach(l => l.intensity = g * 6);
+    this.nukeGlow = Math.max(0, this.nukeGlow - dt * 1.2);
+    this.nukeLight.intensity = this.nukeGlow * 40;
+    if (this.nukeAt) this.nukeLight.position.copy(this.nukeAt).setY(1.2);
+    if (this.hintMesh.visible) { const k = 0.5 + 0.5 * Math.sin(t * 5); this.hintMesh.material.opacity = 0.35 + k * 0.65; this.hintMesh.scale.setScalar(1 + k * 0.06); }
 
     // 貼り紙はいつもカメラの方を向く
     const az = this.az;

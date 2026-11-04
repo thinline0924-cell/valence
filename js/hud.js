@@ -1,5 +1,5 @@
 // 画面の上と下の表示(スコア・連鎖・時間・熱・次の原子・反応の記録)と、開始・結果の画面
-import { ELEMENTS, REACTIONS, fmt } from './chem.js';
+import { ELEMENTS, ALL_REACTIONS, fmt } from './chem.js';
 import { RULES } from './sim.js';
 
 const byId = id => document.getElementById(id);
@@ -14,7 +14,7 @@ export class Hud {
     this.best = load(BEST_KEY, 0);
     this.foundAll = new Set(load(FOUND_KEY, []));
     byId('bestStart').textContent = this.best ? this.best.toLocaleString('en-US') : '—';
-    byId('foundStart').textContent = `${this.foundAll.size} / ${REACTIONS.length}`;
+    byId('foundStart').textContent = `${this.foundAll.size} / ${ALL_REACTIONS.length}`;
   }
 
   handle(type, d) {
@@ -22,13 +22,18 @@ export class Hud {
     if (type === 'start') { this.shown = 0; byId('event').classList.remove('show'); document.documentElement.classList.remove('fever'); }
     if (type === 'fever') document.documentElement.classList.toggle('fever', d.on);
     if (type === 'needHeat') this.hint(`熱が ${d.need} kJ 必要`);
+    if (type === 'hint') this.guide(d.key ? `光っている加熱マスに ${d.el} を置くと、連鎖が始まります` : '');
+    if (type === 'unlock') this.hint('ウランとプルトニウムが出るようになりました', 2600);
+    if (type === 'tier') this.hint('補給される試薬が増えました', 2000);
     if (type === 'end') this.result(d);
   }
 
   showEvent(d) {
     const R = d.R;
-    byId('eq').innerHTML = fmt(R.eq);
-    const heat = R.dH < 0 ? `<span class="hot">発熱 ${-R.dH} kJ</span>` : `<span class="cold">熱を ${R.dH} kJ 使う</span>`;
+    byId('eq').innerHTML = R.nuclear ? R.eq : fmt(R.eq);
+    byId('event').classList.toggle('nuclear', !!R.nuclear);
+    const heat = R.nuclear ? (R.id === 'breed' ? '<span class="nuke">中性子の吸収</span>' : '<span class="nuke">核エネルギー 約 200 MeV/核</span>')
+      : R.dH < 0 ? `<span class="hot">発熱 ${-R.dH} kJ</span>` : `<span class="cold">熱を ${R.dH} kJ 使う</span>`;
     const isNew = !this.foundAll.has(R.id);
     byId('meta').innerHTML = `<span>${R.name}</span>${heat}${d.chain > 1 ? `<span>連鎖 ×${d.chain}</span>` : ''}${isNew ? '<span class="new">初めての反応</span>' : ''}<span class="pts">+${d.pts.toLocaleString('en-US')}</span>`;
     if (isNew) { this.foundAll.add(R.id); save(FOUND_KEY, [...this.foundAll]); }
@@ -36,9 +41,13 @@ export class Hud {
     clearTimeout(this.evT); this.evT = setTimeout(() => ev.classList.remove('show'), 2600);
   }
 
-  hint(text) {
+  hint(text, ms = 1400) {
     const h = byId('hint'); h.textContent = text; h.classList.add('show');
-    clearTimeout(this.hT); this.hT = setTimeout(() => h.classList.remove('show'), 1400);
+    clearTimeout(this.hT); this.hT = setTimeout(() => h.classList.remove('show'), ms);
+  }
+  // 最初の一手の案内(置くまで出しておく)
+  guide(text) {
+    const h = byId('guide'); h.textContent = text; h.classList.toggle('show', !!text);
   }
 
   update(g) {
@@ -60,7 +69,7 @@ export class Hud {
     byId('htxt').textContent = Math.round(g.heat);
     byId('hbar').style.width = (g.heat / RULES.heatMax * 100).toFixed(1) + '%';
     byId('heatRow').classList.toggle('fever', g.feverOn);
-    byId('hlabel').textContent = g.feverOn ? '臨界' : '熱';
+    byId('hlabel').textContent = g.feverOn ? '過熱' : '熱';
 
     const q = g.queue.join(',');
     if (q !== this.queueStr) {
@@ -77,11 +86,11 @@ export class Hud {
     byId('rBest').textContent = isBest ? '自己ベスト更新' : `自己ベスト ${this.best.toLocaleString('en-US')}`;
     byId('rChain').textContent = d.maxChain;
     byId('rCount').textContent = d.reactCount;
-    byId('rFound').textContent = `${this.foundAll.size} / ${REACTIONS.length}`;
-    byId('rList').innerHTML = REACTIONS.filter(r => d.found.includes(r.id))
-      .map(r => `<li><span class="n">${r.name}</span><span class="e">${fmt(r.eq)}</span></li>`).join('') || '<li><span class="n">反応は起きませんでした</span></li>';
+    byId('rFound').textContent = `${this.foundAll.size} / ${ALL_REACTIONS.length}`;
+    byId('rList').innerHTML = ALL_REACTIONS.filter(r => d.found.includes(r.id))
+      .map(r => `<li><span class="n">${r.name}</span><span class="e">${r.nuclear ? r.eq : fmt(r.eq)}</span></li>`).join('') || '<li><span class="n">反応は起きませんでした</span></li>';
     byId('bestStart').textContent = this.best.toLocaleString('en-US');
-    byId('foundStart').textContent = `${this.foundAll.size} / ${REACTIONS.length}`;
+    byId('foundStart').textContent = `${this.foundAll.size} / ${ALL_REACTIONS.length}`;
     setTimeout(() => { byId('result').hidden = false; }, 700);
   }
 }

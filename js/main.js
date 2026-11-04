@@ -2,7 +2,7 @@
 import { Game } from './sim.js';
 import { View } from './view.js';
 import { Hud } from './hud.js';
-import { Sound } from './audio.js';
+import { Sound, SOUNDS } from './audio.js';
 
 try { await Promise.race([document.fonts.load('400 100px Jost'), new Promise(r => setTimeout(r, 1500))]); } catch {}
 
@@ -22,6 +22,7 @@ game.on((type, d) => {
     case 'complete': audio.play('complete'); break;
     case 'dissolve': audio.play('fizzle'); break;
     case 'react': {
+      if (d.R.nuclear) { audio.play(d.R.id === 'breed' ? 'complete' : 'fission'); break; }
       const q = Math.abs(d.R.dH);
       audio.play(d.R.dH > 0 ? 'endo' : q >= 400 ? 'react_l' : q >= 100 ? 'react_m' : 'react_s', { rate: Math.min(1.6, 1 + (d.chain - 1) * 0.06) });
       break;
@@ -30,19 +31,38 @@ game.on((type, d) => {
     case 'escape': audio.play('escape', { gain: 0.6 }); break;
     case 'spawn': if (d.drip) audio.play('drip'); break;
     case 'needHeat': audio.play('need_heat'); break;
-    case 'fever': audio.play(d.on ? 'fever_on' : 'fever_off'); audio.music(d.on ? 'bgm_fever' : 'bgm_main'); break;
+    case 'fever': audio.play(d.on ? 'fever_on' : 'fever_off'); audio.music(d.on ? 'fever' : 'main'); break;
     case 'end': audio.play('end'); audio.music(null); break;
   }
 });
 view.onTap = key => { if (!game.over) game.place(key); };
 
 function start() {
-  audio.unlock(); audio.play('start'); audio.music('bgm_main');
+  audio.unlock(); audio.play('start'); audio.music('main');
   $('title').hidden = true; $('result').hidden = true;
   lastTick = -1;
   game.start();
 }
 $('startBtn').onclick = start;
+
+// 音の確認(開始画面):割り当てた音を1つずつ鳴らす
+$('soundTest').addEventListener('toggle', () => {
+  if (!$('soundTest').open) return;
+  audio.unlock();
+  const list = $('soundList');
+  const fill = () => {
+    list.innerHTML = Object.entries(SOUNDS).map(([k, label]) =>
+      `<button data-s="${k}" ${audio.has(k) ? '' : 'disabled'}>${label}<span>${k}</span></button>`).join('');
+  };
+  fill(); setTimeout(fill, 800); setTimeout(fill, 2500);
+});
+$('soundList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const k = b.dataset.s;
+  if (k.startsWith('bgm_')) { audio.music(null); setTimeout(() => audio.music(k === 'bgm_fever' ? 'fever' : 'main'), 50); setTimeout(() => audio.music(null), 8000); }
+  else audio.play(k);
+});
+if (location.hash === '#debug') window.__valence = { game, view, audio };
 $('againBtn').onclick = start;
 
 const toggle = (btn, fn) => { btn.onclick = () => { const v = btn.getAttribute('aria-pressed') !== 'true'; btn.setAttribute('aria-pressed', v); fn(v); audio.play('ui'); }; };

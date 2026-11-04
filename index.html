@@ -29,7 +29,7 @@
       <div class="g" id="timeRow"><span class="gl">時間</span><div class="track"><i id="tbar"></i></div><span id="ttxt" class="gv">2:30</span></div>
       <div class="g" id="heatRow"><span class="gl" id="hlabel">熱</span><div class="track ticks"><i id="hbar"></i></div><span class="gv"><span id="htxt">0</span> kJ</span></div>
     </div>
-    <div class="hint" id="hint"></div>
+    <div class="notes"><div class="hint" id="hint"></div><div class="guide" id="guide"></div></div>
     <div class="event" id="event" aria-live="polite"><div class="eq" id="eq"></div><div class="meta" id="meta"></div></div>
     <footer class="tray">
       <div><span class="lbl">次の原子</span><div class="tiles" id="tiles"></div></div>
@@ -52,7 +52,8 @@
         <li><b>置く</b>マスを押すと、次の原子が置かれる。となりの原子と、手の数(点の数)だけ自動で結合する</li>
         <li><b>完成</b>手がすべて埋まり実在の物質になると、その姿に変わる</li>
         <li><b>反応</b>となり合った物質は、条件がそろうと反応する。生成物がさらに反応すると連鎖になり、その間は時計が止まる</li>
-        <li><b>熱</b>発熱反応で熱がたまる。加熱マスでは熱を使って吸熱反応が起こせる。満タンになると臨界になり、反応が速く、得点は2倍</li>
+        <li><b>熱</b>発熱反応で熱がたまる。加熱マスでは熱を使って吸熱反応が起こせる。満タンになると過熱になり、反応が速く、得点は2倍。大きな燃焼の炎は、となりの燃えるものに燃え移る</li>
+        <li><b>核</b>反応を重ねると、ウランとプルトニウムが出はじめる。二酸化ウランなどの燃料を2つ並べて水に接すると核分裂し、中性子がとなりの燃料に届いて連鎖する</li>
       </ol>
       <dl class="cells">
         <div><dt class="c-heat"></dt><dd>加熱 点火と吸熱反応</dd></div>
@@ -61,6 +62,7 @@
       </dl>
       <div class="stats"><span>自己ベスト <b id="bestStart">—</b></span><span>見つけた反応 <b id="foundStart">0</b></span></div>
       <button class="go" id="startBtn">はじめる</button>
+      <details class="soundtest" id="soundTest"><summary>音の確認</summary><div class="slist" id="soundList"></div></details>
     </div>
   </section>
 

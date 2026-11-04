@@ -1,1 +1,8 @@
-[]
+{
+  "ui":        { "file": "se_click.mp3" },
+  "tick":      { "file": "se_click.mp3", "rate": 0.8, "gain": 1.3 },
+  "complete":  { "file": "se_complete.mp3", "gain": 0.8, "trim": 0.05 },
+  "fever_on":  { "file": "se_chime.mp3", "gain": 0.8 },
+  "bgm_main":  { "file": "bgm_main.mp3", "loopLength": 126, "gain": 0.4 },
+  "bgm_fever": { "file": "bgm_fever.mp3", "gain": 0.4 }
+}

@@ -1,21 +1,25 @@
 // ゲームのルール本体(表示とは切り離してある)
 import { CELLS, SPECIAL, neighbors } from './board.js';
-import { ELEMENTS, SUBSTANCES, REACTIONS, FINAL, BUILDABLE, signature } from './chem.js';
+import { ELEMENTS, SUBSTANCES, REACTIONS, NUCLEAR, FINAL, BUILDABLE, signature } from './chem.js';
 
 export const RULES = {
   time: 150,          // 制限時間(秒)
-  heatMax: 600,       // 熱ゲージの上限(kJ)。満タンで臨界
-  feverTime: 10,      // 臨界の長さ(秒)
+  heatMax: 600,       // 熱ゲージの上限(kJ)。満タンで過熱
+  feverTime: 10,      // 過熱の長さ(秒)
   cool: 4,            // 熱が自然に逃げる速さ(kJ/秒)
   pauseMax: 8,        // 1回の連鎖で時計を止められる長さの上限(秒)
   tick: 0.5,          // 反応の判定の間隔(秒)
-  tickFever: 0.28,    // 臨界中の間隔(温度が高いほど反応は速い)
+  tickFever: 0.28,    // 過熱中の間隔(温度が高いほど反応は速い)
   bias: 0.3,          // 組み立て中の分子に合う原子を配る確率
   fragLife: 20,       // 組み立て途中の原子が散るまで(秒)
   gasLife: 24,        // 反応しない気体が抜けていくまで(秒)
   collectDelay: 1.0,  // それ以上反応しない物質が回収されるまで(秒)
   water: 5,           // 水の補給の間隔(秒)。盤の水が waterMin より少ないとき、空いたマスに一滴落ちる
   waterMin: 4,
+  reagent: 9,         // 試薬の補給の間隔(秒)。反応の回数が増えるほど、補給される物質の種類が広がる
+  flameAt: 150,       // この熱量(kJ)以上の発熱反応は炎を出し、となりの燃えるものに点火する
+  nuclearAfter: 12,   // ウランとプルトニウムが出はじめるまでの反応の回数
+  fissionPts: 2000,   // 核分裂1回の基本点
   diffuse: 0.35,      // 気体が隣へ動く確率(1秒あたり、空気と同じ重さのとき)。軽いほど速い(グレアムの法則)
 };
 
@@ -29,15 +33,32 @@ export class Game {
   start() {
     Object.assign(this, {
       t: 0, time: RULES.time, score: 0, heat: 0, fever: 0, chain: 0, maxChain: 0,
-      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water,
+      cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(),
       over: false, found: new Set(), reactCount: 0, lastHeatHint: -99, pauseLeft: 0, seen: new Map(),
     });
-    this.queue = [this.pick(), this.pick(), this.pick()];
+    this.queue = ['Cl', this.pick(), this.pick()];
     this.emit('start');
-    const seeds = ['H2O', 'H2O', 'H2O', 'H2O', 'H2O', 'O2', 'CaO', 'H2O2'];
-    const free = CELLS.filter(k => !SPECIAL[k]).sort(() => Math.random() - 0.5);
-    for (const s of seeds) this.addSub(s, free.pop(), -1);
+    // 最初の連鎖の見本:加熱マスに Cl を置くと
+    //   H + Cl → HCl → (水) 塩酸 → (水酸化ナトリウム水溶液) 中和 → (加熱) 食塩の結晶 と進む
+    const O = OPENING;
+    this.placeAtom('H', O.h);
+    this.addSub('H2O', O.water, -1);
+    this.addSub('NaOHaq', O.base, -1);
+    this.hintKey = O.at;
+    this.emit('hint', { key: O.at, el: 'Cl' });
+    const near = new Set([O.h, O.water, O.base, O.at].flatMap(k => [k, ...neighbors(k)]));
+    const seeds = ['H2O', 'H2O', 'H2O', 'O2', 'CaO', 'H2O2'];
+    const free = CELLS.filter(k => !SPECIAL[k] && !near.has(k)).sort(() => Math.random() - 0.5);
+    // 最初に置く物質どうしは離しておく(始まってすぐ勝手に反応しないように)
+    for (const s of seeds) {
+      const k = free.find(k => !near.has(k));
+      if (!k) break;
+      this.addSub(s, k, -1);
+      near.add(k); neighbors(k).forEach(n => near.add(n));
+    }
   }
+
+  get nuclearOpen() { return this.reactCount >= RULES.nuclearAfter; }
 
   get feverOn() { return this.fever > 0; }
   get cascading() { return this.chain > 0; }
@@ -48,6 +69,13 @@ export class Game {
     if (this.over || !key || this.cells.has(key)) return false;
     const el = this.queue.shift();
     this.queue.push(this.pick());
+    if (this.hintKey) { this.hintKey = null; this.emit('hint', { key: null }); }
+    this.placeAtom(el, key);
+    this.schedule(RULES.tick * (this.feverOn ? 0.6 : 1));
+    return true;
+  }
+
+  placeAtom(el, key) {
     const atom = { kind: 'atom', id: this.uid++, el, key, deg: 0, frag: null };
     this.cells.set(key, atom);
     this.emit('place', { id: atom.id, el, key });
@@ -68,8 +96,6 @@ export class Game {
     for (const a of frag.atoms) a.frag = frag.id;
     this.frags.set(frag.id, frag);
     if (best.sub) this.complete(frag, best.sub, key);
-    this.schedule(RULES.tick * (this.feverOn ? 0.6 : 1));
-    return true;
   }
 
   // となりの原子のうち、どれと結合するかを決める
@@ -123,15 +149,17 @@ export class Game {
         const counts = {};
         for (const a of f.atoms) counts[a.el] = (counts[a.el] || 0) + 1;
         for (const el of Object.keys(ELEMENTS)) {
+          if (ELEMENTS[el].late && !this.nuclearOpen) continue;
           const c = { ...counts, [el]: (counts[el] || 0) + 1 };
           if (BUILDABLE.some(b => Object.entries(c).every(([e, n]) => (b.counts[e] || 0) >= n))) want.add(el);
         }
       }
       if (want.size) { const w = [...want]; return w[Math.floor(Math.random() * w.length)]; }
     }
-    const tot = Object.values(ELEMENTS).reduce((s, e) => s + e.w, 0);
+    const list = Object.entries(ELEMENTS).filter(([, e]) => !e.late || (this.cells && this.nuclearOpen));
+    const tot = list.reduce((s, [, e]) => s + e.w, 0);
     let r = Math.random() * tot;
-    for (const [el, e] of Object.entries(ELEMENTS)) { r -= e.w; if (r <= 0) return el; }
+    for (const [el, e] of list) { r -= e.w; if (r <= 0) return el; }
     return 'H';
   }
 
@@ -139,21 +167,25 @@ export class Game {
   schedule(dt) { if (this.tickIn < 0 || this.tickIn > dt) this.tickIn = dt; }
 
   tick() {
-    const found = this.findReactions();
-    if (!found.length) {
+    const nuc = this.findNuclear();
+    const found = this.findReactions(new Set(nuc.map(n => n.key)));
+    if (!found.length && !nuc.length) {
       if (this.chain > 0) this.emit('chainEnd', { chain: this.chain });
-      this.chain = 0; this.seen.clear();
+      this.chain = 0; this.seen.clear(); this.flames = new Set();
       return;
     }
     if (this.chain === 0) this.pauseLeft = RULES.pauseMax;
     this.chain++;
     this.maxChain = Math.max(this.maxChain, this.chain);
+    this.nextFlames = new Set();
+    for (const n of nuc) n.type === 'fission' ? this.fission(n.key) : this.breed(n.key);
     for (const f of found) this.execute(f);
+    this.flames = this.nextFlames;
     this.schedule(this.feverOn ? RULES.tickFever : RULES.tick);
   }
 
-  findReactions() {
-    const used = new Set(), out = [];
+  findReactions(used = new Set()) {
+    const out = [];
     let heatLeft = this.heat;
     const ready = k => { const e = this.cells.get(k); return e && e.kind === 'sub' && e.readyAt <= this.t && !used.has(k); };
     for (const R of BY_SIZE) {
@@ -169,7 +201,8 @@ export class Game {
         if (need.length) continue;
         const on = kind => keys.some(x => SPECIAL[x] === kind);
         let ok = true;
-        if (R.cond === 'ignite') ok = on('heat') || this.feverOn;
+        // 点火:加熱マス、過熱中、または直前の大きな発熱反応の炎がとなりに来ている
+        if (R.cond === 'ignite') ok = on('heat') || this.feverOn || keys.some(x => this.flames.has(x) || neighbors(x).some(n => this.flames.has(n)));
         else if (R.cond === 'light') ok = on('light');
         else if (R.cond === 'cat') ok = on('cat');
         else if (R.cond === 'heat') {
@@ -196,6 +229,7 @@ export class Game {
       if (k) { const e = this.addSub(p, k, this.t + delay); products.push({ id: e.id, sub: p, key: k }); }
       else escapes.push(p);
     }
+    if (R.dH <= -RULES.flameAt) for (const k of keys) this.nextFlames.add(k);
     if (R.dH < 0) this.addHeat(-R.dH);
     else this.heat = Math.max(0, this.heat - R.dH);
     // 同じ連鎖の中で同じ反応をくり返すと、得点は半分ずつになる(循環する反応で稼ぎ続けられないように)
@@ -206,6 +240,59 @@ export class Game {
     this.found.add(R.id);
     this.reactCount++;
     this.emit('react', { R, center: keys[0], consumed, products, escapes, pts, chain: this.chain, fever: this.feverOn, first });
+    if (this.reactCount === RULES.nuclearAfter) this.emit('unlock', { els: ['U', 'Pu'] });
+  }
+
+  /* ---------- 核分裂 ----------
+     燃料(UO2・PuO2)のペレットが、水(中性子の減速材)に接していて、
+     別の燃料に接しているか、となりの核分裂で中性子を受けていると核分裂する。
+     中性子を受けても水に接していない UO2 は、ウラン238が中性子を吸収してプルトニウムに変わる */
+  findNuclear() {
+    const out = [];
+    for (const [k, e] of this.cells) {
+      if (e.kind !== 'sub' || !SUBSTANCES[e.sub].fuel || e.readyAt > this.t) continue;
+      const nb = neighbors(k).map(n => this.cells.get(n)).filter(Boolean);
+      const water = nb.some(x => x.sub === 'H2O');
+      const fuel = nb.some(x => x.kind === 'sub' && SUBSTANCES[x.sub].fuel);
+      if (water && (fuel || e.irr)) out.push({ type: 'fission', key: k });
+      else if (e.irr && e.sub === 'UO2') out.push({ type: 'breed', key: k });
+      e.irr = false;
+    }
+    return out;
+  }
+
+  fission(key) {
+    const e = this.cells.get(key);
+    const N = e.sub === 'UO2' ? NUCLEAR.u_fission : NUCLEAR.pu_fission;
+    const delay = (this.feverOn ? RULES.tickFever : RULES.tick) * 0.6;
+    this.cells.delete(key);
+    const products = [], escapes = [];
+    const fp = this.addSub('FP', key, this.t + delay);
+    products.push({ id: fp.id, sub: 'FP', key });
+    const free = neighbors(key).filter(k => !this.cells.has(k));
+    if (free.length) { const g = this.addSub(N.gas, free[Math.floor(Math.random() * free.length)], this.t + delay); products.push({ id: g.id, sub: N.gas, key: g.key }); }
+    else escapes.push(N.gas);
+    // 中性子がとなりの燃料に届く
+    for (const n of neighbors(key)) { const x = this.cells.get(n); if (x && x.kind === 'sub' && SUBSTANCES[x.sub].fuel) x.irr = true; }
+    this.nextFlames.add(key);
+    this.addHeat(RULES.heatMax);
+    const pts = Math.round(RULES.fissionPts * this.chain * (this.feverOn ? 2 : 1));
+    this.finishNuclear(N, key, [{ id: e.id, key, sub: e.sub }], products, escapes, pts);
+  }
+
+  breed(key) {
+    const e = this.cells.get(key);
+    this.cells.delete(key);
+    const pu = this.addSub('PuO2', key, this.t + 0.3);
+    this.finishNuclear(NUCLEAR.breed, key, [{ id: e.id, key, sub: e.sub }], [{ id: pu.id, sub: 'PuO2', key }], [], 300 * this.chain);
+  }
+
+  finishNuclear(N, key, consumed, products, escapes, pts) {
+    this.score += pts;
+    const first = !this.found.has(N.id);
+    this.found.add(N.id);
+    this.reactCount++;
+    this.emit('react', { R: N, center: key, consumed, products, escapes, pts, chain: this.chain, fever: this.feverOn, first });
   }
 
   addHeat(kj) {
@@ -242,6 +329,20 @@ export class Game {
       if (n < RULES.waterMin && free.length > 4) {
         const e = this.addSub('H2O', free[Math.floor(Math.random() * free.length)], this.t + 0.4);
         this.emit('spawn', { id: e.id, sub: 'H2O', key: e.key, drip: true });
+        this.schedule(0.5);
+      }
+    }
+    this.reagentIn -= dt;
+    if (this.reagentIn <= 0) {
+      this.reagentIn = RULES.reagent;
+      const free = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k]);
+      const tier = TIERS.filter(t => this.reactCount >= t.after).length;
+      if (tier > this.tier) { this.tier = tier; if (tier > 1) this.emit('tier', { tier }); }
+      const pool = TIERS.slice(0, tier).flatMap(t => t.subs);
+      if (free.length > 8) {
+        const sub = pool[Math.floor(Math.random() * pool.length)];
+        const e = this.addSub(sub, free[Math.floor(Math.random() * free.length)], this.t + 0.4);
+        this.emit('spawn', { id: e.id, sub, key: e.key, drip: true });
         this.schedule(0.5);
       }
     }
@@ -297,6 +398,17 @@ export class Game {
     this.emit('end', { score: this.score, maxChain: this.maxChain, found: [...this.found], reactCount: this.reactCount });
   }
 }
+
+// 試薬の補給:反応の回数(after)に応じて、補給される物質が増えていく
+export const TIERS = [
+  { after: 0,  subs: ['O2', 'NaOHaq', 'CaO', 'H2O2', 'CH4'] },
+  { after: 5,  subs: ['HClaq', 'CO2', 'NH3', 'CH3OH', 'N2', 'Cl2'] },
+  { after: 12, subs: ['C2H4', 'H2S', 'SO2', 'C2H5OH', 'CO', 'NO'] },
+  { after: 20, subs: ['SO3', 'NO2', 'C2H2', 'N2H4', 'NaHCO3aq', 'CH3COOH'] },
+];
+
+// 最初の連鎖の見本の配置
+export const OPENING = { h: '3,-2', water: '2,-2', base: '1,0', at: '2,-1' };
 
 /* ---------- 原子価の判定 ---------- */
 // 各結合に 1〜3 重の次数を割り当てて、すべての原子の手がちょうど埋まるか

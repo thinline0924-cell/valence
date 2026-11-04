@@ -1,7 +1,7 @@
 // 画面なしでルールを動かし、反応や完成が起きるか・例外が出ないかを確かめる
-import { Game, exactValence } from '../js/sim.js';
+import { Game, exactValence, OPENING } from '../js/sim.js';
 import { CELLS } from '../js/board.js';
-import { REACTIONS, BUILDABLE } from '../js/chem.js';
+import { REACTIONS, NUCLEAR_LIST, SUBSTANCES, BUILDABLE } from '../js/chem.js';
 
 let ok = true;
 const check = (c, msg) => { if (!c) { ok = false; console.error('NG', msg); } };
@@ -48,6 +48,39 @@ function greedy(game) {
     if (v > bestV) { bestV = v; best = k; }
   }
   return best;
+}
+
+// 反応に出てくる物質がすべて定義されているか
+for (const R of REACTIONS) for (const x of [...R.in, ...R.out]) check(SUBSTANCES[x], `unknown substance ${x} in ${R.id}`);
+// 核反応の質量数と原子番号がそろっているか
+for (const N of NUCLEAR_LIST) if (N.nucl) {
+  check(N.nucl.A[0] === N.nucl.A[1], `mass number ${N.id}`);
+  check(N.nucl.Z[0] === N.nucl.Z[1], `atomic number ${N.id}`);
+}
+
+// 最初の連鎖の見本:加熱マスに Cl を置くと、塩酸 → 中和 → 結晶化まで進むか
+{
+  const g = new Game(); const seen = [];
+  g.on((t, d) => { if (t === 'react') seen.push(d.R.id); });
+  g.start();
+  check(g.queue[0] === 'Cl', 'opening queue starts with Cl');
+  g.place(OPENING.at);
+  for (let i = 0; i < 30 * 6; i++) g.update(1 / 30);
+  for (const id of ['hcl_dissolve', 'neutral', 'crystallize']) check(seen.includes(id), `opening chain: ${id} (saw ${seen.join(',')})`);
+}
+
+// 核分裂:燃料2つ + 水で分裂し、となりの燃料へ中性子が届いて連鎖するか
+{
+  const g = new Game(); const seen = [];
+  g.on((t, d) => { if (t === 'react') seen.push(d.R.id); });
+  g.start();
+  g.cells.clear(); g.frags.clear(); g.queue = ['H', 'H', 'H'];
+  g.addSub('UO2', '0,0', 0); g.addSub('UO2', '1,0', 0); g.addSub('H2O', '0,1', 0); g.addSub('H2O', '1,1', 0);
+  g.addSub('UO2', '-1,0', 0);   // 水に接していない → プルトニウムに変わる
+  g.tick(); g.t += 1; g.tick(); g.t += 1; g.tick();
+  check(seen.filter(x => x === 'u_fission').length >= 2, `fission chain (saw ${seen.join(',')})`);
+  check(seen.includes('breed'), `breeding (saw ${seen.join(',')})`);
+  check(g.feverOn, 'fission starts overheating');
 }
 
 // 自動プレイ
