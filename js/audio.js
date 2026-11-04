@@ -21,7 +21,12 @@ export class Sound {
   unlock() {
     if (this.ctx) { this.ctx.resume?.(); return; }
     try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
-    this.master = this.ctx.createGain(); this.master.connect(this.ctx.destination);
+    // 連鎖で音が重なっても割れたりうるさくなったりしないよう、全体にコンプレッサーをかける
+    this.comp = this.ctx.createDynamicsCompressor();
+    this.comp.threshold.value = -20; this.comp.knee.value = 12; this.comp.ratio.value = 4;
+    this.comp.attack.value = 0.004; this.comp.release.value = 0.2;
+    this.comp.connect(this.ctx.destination);
+    this.master = this.ctx.createGain(); this.master.connect(this.comp);
     this.master.gain.value = this.on ? 1 : 0;
     fetch(this.base + 'manifest.json').then(r => r.ok ? r.json() : {}).catch(() => ({})).then(list => {
       const files = new Map();
@@ -44,6 +49,11 @@ export class Sound {
 
   play(name, { rate = 1, gain = 1 } = {}) {
     if (!this.on || !this.ctx || !this.buf[name]) return;
+    // 同じ音は 0.09 秒以内に重ねて鳴らさない(同時に起きた反応の数だけ鳴ると、うるさいため)
+    const now = this.ctx.currentTime;
+    this.last = this.last || {};
+    if (now - (this.last[name] ?? -1) < 0.09) return;
+    this.last[name] = now;
     const c = this.conf[name] || {};
     const s = this.ctx.createBufferSource(); s.buffer = this.buf[name];
     s.playbackRate.value = rate * (c.rate || 1);

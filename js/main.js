@@ -12,7 +12,7 @@ const view = new View($('c'), $('labels'));
 const hud = new Hud();
 const audio = new Sound();
 
-let lastTick = -1;
+let lastTick = -1, reactSoundAt = -1;
 game.on((type, d) => {
   view.handle(type, d);
   hud.handle(type, d);
@@ -22,6 +22,9 @@ game.on((type, d) => {
     case 'complete': audio.play('complete'); break;
     case 'dissolve': audio.play('fizzle'); break;
     case 'react': {
+      // 同じ判定で同時に起きた反応は、最初の1つ(材料の多い反応・核分裂が先)の音だけ鳴らす
+      if (reactSoundAt === game.t) break;
+      reactSoundAt = game.t;
       if (d.R.nuclear) { audio.play(d.R.id === 'breed' ? 'complete' : 'fission'); break; }
       const q = Math.abs(d.R.dH);
       audio.play(d.R.dH > 0 ? 'endo' : q >= 400 ? 'react_l' : q >= 100 ? 'react_m' : 'react_s', { rate: Math.min(1.6, 1 + (d.chain - 1) * 0.06) });

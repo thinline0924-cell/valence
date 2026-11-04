@@ -78,6 +78,7 @@ export class Game {
     const empty = k => !this.cells.has(k) && !avoid.has(k);
     let spots = kind ? CELLS.filter(k => SPECIAL[k] === kind && empty(k) && k !== OPENING.at) : [];
     if (!spots.length) spots = CELLS.filter(k => empty(k) && !SPECIAL[k] && neighbors(k).filter(n => !this.cells.has(n)).length >= 3);
+    if (!spots.length) spots = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k]);
     if (!spots.length) return;
     const k = spots[Math.floor(Math.random() * spots.length)];
     const e = this.addSub(T.R.in[0], k, -1);
