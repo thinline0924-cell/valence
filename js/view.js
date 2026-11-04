@@ -69,8 +69,7 @@ export class View {
     s.add(key);
 
     this.tableMat = this.toon(P.table);
-    const table = new THREE.Mesh(new THREE.CylinderGeometry(8.5, 8.5, 0.3, 96), this.tableMat);
-    table.position.y = -0.42; table.receiveShadow = true; s.add(table);
+    this.buildRoom(s);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(4.7, 4.82, 0.26, 6), this.toon(P.base));
     base.rotation.y = Math.PI / 6; base.position.y = -0.14; base.receiveShadow = base.castShadow = true; s.add(base);
 
@@ -132,6 +131,68 @@ export class View {
     // 最初の一手の案内
     this.hintMesh = new THREE.LineLoop(this.hoverMesh.geometry, this.line(P.cream, 1));
     this.hintMesh.visible = false; s.add(this.hintMesh);
+  }
+
+  /* ---------- 理科室の実験台 ----------
+     黒い樹脂の天板、木の縁、奥に試薬棚と流し、まわりに試験管立て・フラスコ・ノート */
+  buildRoom(s) {
+    const add = (geo, mat, x, y, z, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; s.add(m); return m; };
+    const wood = this.toon(0x6e4b33), woodDark = this.toon(0x4f3626);
+    // 天板(上面は y = -0.27)と木の縁
+    add(new THREE.BoxGeometry(24, 0.3, 17), this.tableMat, 0, -0.42, -1.5, false);
+    add(new THREE.BoxGeometry(24, 0.42, 0.35), wood, 0, -0.5, 7.15, false);
+    // 奥の壁と、壁ぎわの戸棚、試薬棚(縦長の画面では計器と重なるので出さない)
+    const back = this.backdrop = new THREE.Group(); s.add(back);
+    const sAdd = s.add.bind(s); s = { add: (...o) => back.add(...o) };
+    const wall = add(new THREE.PlaneGeometry(40, 16), this.toon(0x34404a), 0, 6, -10.2, false);
+    add(new THREE.BoxGeometry(24, 0.08, 1.4), this.toon(0x3d4a54), 0, 4.2, -9.4);
+    for (let i = -3; i <= 3; i++) add(new THREE.BoxGeometry(3.2, 2.6, 0.12), this.toon(0x2d3840), i * 3.4, 5.6, -10.1, false);
+    // 試薬棚:板と2本の柱、上に試薬びん
+    add(new THREE.BoxGeometry(14, 0.12, 1.1), wood, 0, 1.55, -9.0);
+    add(new THREE.BoxGeometry(14, 0.12, 1.1), wood, 0, 0.55, -9.0);
+    for (const x of [-6.9, 6.9]) add(new THREE.BoxGeometry(0.14, 1.9, 1.1), woodDark, x, 0.68, -9.0);
+    const shelfBottles = [[0xe8653a, ''], [0xd84a2e, ''], [0xeb7d45, 'brown'], [0x3f82d6, ''], [0x29a3d6, ''], [0xe2edf0, ''], [0xd9eef0, 'brown'], [0xece4cf, ''], [0xf0a070, 'poly'], [0x8e2f1c, 'brown']];
+    shelfBottles.forEach(([color, bottle], i) => {
+      const g = new THREE.Group(); FORMS.bottle.call(this, g, { color, bottle });
+      g.scale.setScalar(1.25); g.position.set(-6.1 + i * 1.35, i % 2 ? 1.61 : 0.61, -9.0 + (i % 3 - 1) * 0.2); s.add(g);
+      if (i % 2 === 0) { const h = g.clone(); h.position.y = 1.61; h.position.x += 0.4; s.add(h); }
+    });
+    s = { add: sAdd };
+    // 盤のすぐ奥の低い小物(縦長の画面でも見える):ペトリ皿、薬さじ、薬包紙
+    const glassLow = this.toon(0xdfe9ec, { transparent: true, opacity: 0.4, depthWrite: false });
+    add(new THREE.CylinderGeometry(0.7, 0.7, 0.12, 36), glassLow, -2.9, -0.21, -5.0, false);
+    add(new THREE.CylinderGeometry(0.62, 0.62, 0.04, 36), this.toon(0xe9dca8), -2.9, -0.24, -5.0, false);
+    const spat = add(new THREE.BoxGeometry(1.8, 0.03, 0.12), this.toon(0xc9ced2), 1.2, -0.25, -5.2, false); spat.rotation.y = 0.35;
+    const spatEnd = add(new THREE.BoxGeometry(0.34, 0.03, 0.26), this.toon(0xc9ced2), 0.4, -0.25, -4.9, false); spatEnd.rotation.y = 0.35;
+    const paper = add(new THREE.BoxGeometry(1.1, 0.01, 1.1), this.toon(0xf4efe2), 3.3, -0.26, -5.1, false); paper.rotation.y = 0.785;
+    for (let i = 0; i < 7; i++) add(new THREE.SphereGeometry(0.09 - i * 0.008, 10, 8), this.toon(0x29a3d6), 3.3 + Math.cos(i * 2.4) * 0.12, -0.22 + (i < 3 ? 0.04 : 0), -5.1 + Math.sin(i * 2.4) * 0.12, false);
+    // 流しと水道の蛇口(右奥)
+    add(new THREE.BoxGeometry(2.4, 0.06, 3.0), this.toon(0xd9dcd8), 8.2, -0.24, -1.8, false);
+    add(new THREE.BoxGeometry(2.0, 0.07, 2.6), this.toon(0x9aa3a8), 8.2, -0.2, -1.8, false);
+    const pipe = this.toon(0xc9ced2, { emissive: 0xffffff, emissiveIntensity: 0.05 });
+    add(new THREE.CylinderGeometry(0.09, 0.09, 1.4, 14), pipe, 9.5, 0.45, -1.8);
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.07, 10, 24, Math.PI), pipe); arc.position.set(9.05, 1.15, -1.8); s.add(arc);
+    add(new THREE.CylinderGeometry(0.07, 0.05, 0.3, 12), pipe, 8.6, 1.0, -1.8);
+    // 試験管立て(左奥)
+    add(new THREE.BoxGeometry(2.2, 0.08, 0.6), wood, -7.6, 0.4, -2.2);
+    add(new THREE.BoxGeometry(2.2, 0.08, 0.6), wood, -7.6, -0.2, -2.2);
+    for (const x of [-8.6, -6.6]) add(new THREE.BoxGeometry(0.08, 0.7, 0.6), woodDark, x, 0.1, -2.2);
+    [0xe8653a, 0x9ad3e6, 0x29a3d6, 0xb8d8a8, 0xc9902e].forEach((c, i) => {
+      const x = -8.35 + i * 0.38;
+      add(new THREE.CylinderGeometry(0.11, 0.11, 0.95, 16), this.toon(0xdfe9ec, { transparent: true, opacity: 0.4, depthWrite: false }), x, 0.32, -2.2, false);
+      add(new THREE.CylinderGeometry(0.095, 0.095, 0.35, 16), this.toon(c), x, 0.0, -2.2, false);
+    });
+    // 三角フラスコ(左手前)
+    const fl = new THREE.LatheGeometry([[0, 0], [0.62, 0], [0.64, 0.06], [0.2, 0.95], [0.17, 1.25], [0.19, 1.28], [0, 1.28]].map(([x, y]) => new THREE.Vector2(x, y)), 32);
+    add(fl, this.toon(0xdfe9ec, { transparent: true, opacity: 0.35, depthWrite: false }), -6.9, -0.27, 2.0, false);
+    add(new THREE.CylinderGeometry(0.45, 0.58, 0.36, 32), this.toon(0xb8d8a8), -6.9, -0.08, 2.0, false);
+    // ノートと鉛筆(右手前)
+    const note = add(new THREE.BoxGeometry(2.6, 0.06, 3.4), this.toon(0xefe6d3), 7.4, -0.24, 2.6); note.rotation.y = -0.18;
+    const cover = add(new THREE.BoxGeometry(2.66, 0.04, 3.46), this.toon(0x2f5c75), 7.4, -0.27, 2.6, false); cover.rotation.y = -0.18;
+    for (let i = 0; i < 8; i++) { const l = add(new THREE.BoxGeometry(2.2, 0.005, 0.02), this.toon(0x9ab0c0), 7.4, -0.205, 1.4 + i * 0.32, false); l.rotation.y = -0.18; l.position.x += (1.4 + i * 0.32 - 2.6) * -0.18; }
+    const pen = add(new THREE.CylinderGeometry(0.06, 0.06, 2.2, 6), this.toon(0xe0b84a), 6.3, -0.16, 4.0); pen.rotation.set(0, 0.5, Math.PI / 2);
+    // 光:天井の明かりのような柔らかい明るさを手前に
+    wall.receiveShadow = false;
   }
 
   buildShared() {
@@ -522,6 +583,7 @@ export class View {
     this.camera.aspect = w / h;
     const vf = THREE.MathUtils.degToRad(this.camera.fov), hf = 2 * Math.atan(Math.tan(vf / 2) * this.camera.aspect);
     this.dist = Math.max(4.55 / Math.tan(hf / 2), 4.6 / Math.tan(vf / 2));
+    if (this.backdrop) this.backdrop.visible = this.camera.aspect > 0.9;
     this.camera.updateProjectionMatrix();
   }
 

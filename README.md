@@ -47,6 +47,7 @@ python3 -m http.server 8000
 | `js/main.js` | 入り口。上のものをつなぐ |
 | `docs/chemistry.md` | 化学の扱い(正しさの方針・単純化・反応の一覧) |
 | `docs/ranking.md` | ランキングの設定(Supabase) |
+| `js/tutorial.js` | 遊び方の説明(5段階、盤の上で見本が動く) |
 | `js/rank.js` / `js/config.js` | ランキングと、その設定 |
 | `docs/sound.md` | 用意してほしい効果音と BGM の一覧 |
 | `tools/reaction-table.js` | `docs/chemistry.md` の反応の一覧を作る |

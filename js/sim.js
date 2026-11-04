@@ -23,6 +23,9 @@ export const RULES = {
   collectDelay: 1.0,  // それ以上反応しない物質が回収されるまで(秒)
   water: 5,           // 水の補給の間隔(秒)。盤の水が waterMin より少ないとき、空いたマスに一滴落ちる
   waterMin: 4,
+  oShare: 0.42,       // 酸素の重み = ほかの元素(酸素・水素以外)の重みの合計 × これ
+  hShare: 0.4,        // 水素の重み = 同じく × これ
+  openingGuard: 20,   // 始まってこの秒数は、見本の連鎖のまわりに物を置かない
   reagent: 9,         // 試薬の補給の間隔(秒)。反応の回数が増えるほど、補給される物質の種類が広がる
   flameAt: 150,       // この熱量(kJ)以上の発熱反応は炎を出し、となりの燃えるものに点火する
   nuclearAfter: 12,   // ウランとプルトニウムが出はじめるまでの反応の回数
@@ -42,13 +45,32 @@ export class Game {
   on(fn) { this.listeners.push(fn); }
   emit(type, d = {}) { for (const f of this.listeners) f(type, d); }
 
-  start(known = new Set()) {
+  reset(known) {
     this.known = known;
-    Object.assign(this, {
+    Object.assign(this, { demo: false, reserved: null,
       t: 0, time: RULES.time, score: 0, heat: 0, fever: 0, chain: 0, maxChain: 0,
       cells: new Map(), frags: new Map(), uid: 1, tickIn: -1, idleIn: 1, waterIn: RULES.water, reagentIn: RULES.reagent, tier: 0, flames: new Set(), nextFlames: new Set(), lateCount: { U: 0, Pu: 0 }, fissions: 0, targets: [], lastLearn: -99,
       over: false, found: new Set(), reactCount: 0, lastHeatHint: -99, pauseLeft: 0, seen: new Map(),
     });
+  }
+
+  // 遊び方の見本:時計・補給・お題なしで、決めた手順どおりに原子を置いて見せる
+  startDemo(queue = []) {
+    this.reset(new Set());
+    this.demo = true; this.queue = queue.slice();
+    this.emit('start');
+    this.emit('targets', { list: [] });
+  }
+  demoPut(sub, key) { return this.addSub(sub, key, -1); }
+  demoAtom(el, key) {
+    if (this.queue[0] === el) this.queue.shift();
+    this.placeAtom(el, key);
+    this.schedule(RULES.tick);
+  }
+  stopDemo() { this.demo = false; this.over = true; this.emit('start'); }
+
+  start(known = new Set()) {
+    this.reset(known);
     this.queue = ['Cl', this.pick(), this.pick()];
     this.emit('start');
     // 最初の連鎖の見本:加熱マスに Cl を置くと
@@ -60,6 +82,7 @@ export class Game {
     this.hintKey = O.at;
     this.emit('hint', { key: O.at, el: 'Cl' });
     const near = new Set([O.h, O.water, O.base, O.at].flatMap(k => [k, ...neighbors(k)]));
+    this.reserved = new Set(near);   // 見本の連鎖のまわり。始まってしばらくは、ほかの物を置かない
     const seeds = ['H2O', 'H2O', 'H2O', 'O2', 'CaO', 'H2O2'];
     const free = CELLS.filter(k => !SPECIAL[k] && !near.has(k)).sort(() => Math.random() - 0.5);
     // 最初に置く物質どうしは離しておく(始まってすぐ勝手に反応しないように)
@@ -75,12 +98,14 @@ export class Game {
     this.emit('targets', { list: this.targets });
   }
 
-  seedTarget(T, avoid = new Set()) {
+  get guard() { return this.t < RULES.openingGuard && this.reserved ? this.reserved : new Set(); }
+
+  seedTarget(T, avoid = new Set(this.guard)) {
     const kind = { heat: 'heat', ignite: 'heat', light: 'light', cat: 'cat' }[T.R.cond];
     const empty = k => !this.cells.has(k) && !avoid.has(k);
     let spots = kind ? CELLS.filter(k => SPECIAL[k] === kind && empty(k) && k !== OPENING.at) : [];
     if (!spots.length) spots = CELLS.filter(k => empty(k) && !SPECIAL[k] && neighbors(k).filter(n => !this.cells.has(n)).length >= 3);
-    if (!spots.length) spots = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k]);
+    if (!spots.length) spots = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k] && !this.guard.has(k));
     if (!spots.length) return;
     const k = spots[Math.floor(Math.random() * spots.length)];
     const e = this.addSub(T.R.in[0], k, -1);
@@ -99,7 +124,7 @@ export class Game {
       const need = T.R.in.slice(1);
       for (const h of have) { const i = need.indexOf(h); if (i >= 0) need.splice(i, 1); }
       const drop = need.filter(x => !SUBSTANCES[x].mol);
-      const free = neighbors(c.key).filter(k => !this.cells.has(k));
+      const free = neighbors(c.key).filter(k => !this.cells.has(k) && !this.guard.has(k));
       if (drop.length && free.length) return { sub: drop[0], key: free[Math.floor(Math.random() * free.length)] };
     }
     return null;
@@ -107,7 +132,7 @@ export class Game {
 
   // できた物質について、まだ見つけていない反応の手がかりを出す
   learn(sub) {
-    if (this.t - this.lastLearn < 5) return;
+    if (this.demo || this.t - this.lastLearn < 5) return;
     const R = REACTIONS.find(R => R.in.includes(sub) && !this.known.has(R.id) && !this.found.has(R.id));
     if (!R) return;
     this.lastLearn = this.t;
@@ -207,10 +232,17 @@ export class Game {
       }
       if (want.size) { const w = [...want]; return this.counted(w[Math.floor(Math.random() * w.length)]); }
     }
-    const list = Object.entries(ELEMENTS).filter(([el, e]) => this.elOk(el));
-    const tot = list.reduce((s, [, e]) => s + e.w, 0);
+    const list = Object.entries(ELEMENTS).filter(([el]) => this.elOk(el)).map(([el, e]) => [el, e.w]);
+    // 元素が増えても酸素と水素の割合が下がらないように、ほかの元素の重みの合計に合わせて増やす
+    // (金属の多くは酸化物・水酸化物・酸と反応するので、酸素と水素が足りないと行き詰まる)
+    const others = list.filter(([el]) => el !== 'O' && el !== 'H').reduce((s, [, w]) => s + w, 0);
+    for (const x of list) {
+      if (x[0] === 'O') x[1] = Math.max(x[1], others * RULES.oShare);
+      if (x[0] === 'H') x[1] = Math.max(x[1], others * RULES.hShare);
+    }
+    const tot = list.reduce((s, [, w]) => s + w, 0);
     let r = Math.random() * tot;
-    for (const [el, e] of list) { r -= e.w; if (r <= 0) return this.counted(el); }
+    for (const [el, w] of list) { r -= w; if (r <= 0) return this.counted(el); }
     return 'H';
   }
   // 元素は反応の回数(after)に応じて出はじめる。ウランとプルトニウムは数にも上限がある
@@ -379,6 +411,18 @@ export class Game {
   update(dt) {
     if (this.over) return;
     this.t += dt;
+    if (this.demo) {
+      for (const f of [...this.frags.values()]) if (f.settleAt && this.t >= f.settleAt) { this.complete(f, f.sub, f.lastKey); this.schedule(RULES.tick * 0.6); }
+      if (this.tickIn >= 0) { this.tickIn -= dt; if (this.tickIn < 0) this.tick(); }
+      this.idleIn -= dt;
+      if (this.idleIn <= 0) { this.idleIn = 0.8; if (this.tickIn < 0 && !this.cascading) this.tick(); }
+      this.heat = Math.max(0, this.heat - RULES.cool * dt);
+      if (this.feverOn) { this.fever -= dt; if (this.fever <= 0) { this.fever = 0; this.emit('fever', { on: false }); } }
+      if (!this.demoKeep) for (const [k, e] of [...this.cells]) if (e.kind === 'sub' && FINAL.has(e.sub) && this.t - e.born > RULES.collectDelay) {
+        this.cells.delete(k); this.emit('collect', { id: e.id, key: k, sub: e.sub, pts: 40 }); this.score += 40;
+      }
+      return;
+    }
     if (this.cascading && this.pauseLeft > 0) this.pauseLeft -= dt;
     else {
       this.time = Math.max(0, this.time - dt);
@@ -398,7 +442,7 @@ export class Game {
     if (this.waterIn <= 0) {
       this.waterIn = RULES.water;
       const n = [...this.cells.values()].filter(e => e.sub === 'H2O').length;
-      const free = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k]);
+      const free = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k] && !this.guard.has(k));
       if (n < RULES.waterMin && free.length >= RULES.supplyFree - 4) {
         const e = this.addSub('H2O', free[Math.floor(Math.random() * free.length)], this.t + 0.4);
         this.emit('spawn', { id: e.id, sub: 'H2O', key: e.key, drip: true });
@@ -408,7 +452,7 @@ export class Game {
     this.reagentIn -= dt;
     if (this.reagentIn <= 0) {
       this.reagentIn = RULES.reagent;
-      const free = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k]);
+      const free = CELLS.filter(k => !this.cells.has(k) && !SPECIAL[k] && !this.guard.has(k));
       const tier = TIERS.filter(t => this.reactCount >= t.after).length;
       if (tier > this.tier) { this.tier = tier; if (tier > 1) this.emit('tier', { tier }); }
       const pool = TIERS.slice(0, tier).flatMap(t => t.subs);
@@ -501,9 +545,9 @@ export class Game {
 export const TIERS = [
   { after: 0,  subs: ['O2', 'NaOHaq', 'CaO', 'H2O2', 'CH4'] },
   { after: 5,  subs: ['HClaq', 'CO2', 'NH3', 'CH3OH', 'N2', 'Cl2'] },
-  { after: 12, subs: ['C2H4', 'H2S', 'SO2', 'C2H5OH', 'CO', 'NO'] },
-  { after: 20, subs: ['SO3', 'NO2', 'C2H2', 'N2H4', 'NaHCO3aq', 'CH3COOH', 'CuSO4aq', 'Zn', 'Fe2O3', 'KBr'] },
-  { after: 28, subs: ['SiO2', 'CuO', 'Ag2O', 'MgO', 'PCl3', 'FeCl3aq'] },
+  { after: 12, subs: ['C2H4', 'H2S', 'SO2', 'C2H5OH', 'CO', 'NO', 'O2'] },
+  { after: 20, subs: ['SO3', 'NO2', 'C2H2', 'N2H4', 'NaHCO3aq', 'CH3COOH', 'CuSO4aq', 'Zn', 'Fe2O3', 'KBr', 'O2', 'O2'] },
+  { after: 28, subs: ['SiO2', 'CuO', 'Ag2O', 'MgO', 'PCl3', 'FeCl3aq', 'O2', 'O2', 'HClaq'] },
 ];
 
 // お題の選び方:見つけていない反応のうち、材料が少なく条件の易しいものから

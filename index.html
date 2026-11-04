@@ -63,7 +63,7 @@
       </dl>
       <div class="stats"><span>自己ベスト <b id="bestStart">—</b></span><span>見つけた反応 <b id="foundStart">0</b></span></div>
       <button class="go" id="startBtn">はじめる</button>
-      <div class="btn-row"><button class="sub-btn" data-book>図鑑</button><button class="sub-btn" data-rank>ランキング</button></div>
+      <div class="btn-row three"><button class="sub-btn" id="tutBtn">遊び方</button><button class="sub-btn" data-book>図鑑</button><button class="sub-btn" data-rank>ランキング</button></div>
       <details class="soundtest" id="soundTest"><summary>音の確認</summary><div class="slist" id="soundList"></div></details>
     </div>
   </section>
@@ -87,6 +87,19 @@
       <p class="rank-status" id="rankStatus" aria-live="polite"></p>
       <button class="go" id="againBtn">もう一度</button>
       <div class="btn-row"><button class="sub-btn" data-book>図鑑</button><button class="sub-btn" data-rank>ランキング</button></div>
+    </div>
+  </section>
+
+  <section class="coach" id="tutorial" hidden aria-label="遊び方" aria-live="polite">
+    <div class="coach-in">
+      <div class="coach-head"><span class="coach-count" id="tutCount"></span><button class="coach-skip" id="tutSkip">とばす</button></div>
+      <h2 class="coach-title" id="tutTitle"></h2>
+      <p class="coach-text" id="tutText"></p>
+      <div class="coach-foot">
+        <div class="coach-dots" id="tutDots"></div>
+        <div class="coach-nav"><button id="tutBack">戻る</button><button id="tutNext" class="primary">次へ</button></div>
+      </div>
+      <label class="coach-hide"><input type="checkbox" id="tutHide"> 次回から表示しない(開始画面の「遊び方」でいつでも見られます)</label>
     </div>
   </section>
 

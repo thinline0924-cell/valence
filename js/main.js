@@ -4,6 +4,7 @@ import { View } from './view.js';
 import { Hud } from './hud.js';
 import { Sound, SOUNDS } from './audio.js';
 import { Ranking } from './rank.js';
+import { Tutorial } from './tutorial.js';
 
 try { await Promise.race([document.fonts.load('400 100px Jost'), new Promise(r => setTimeout(r, 1500))]); } catch {}
 
@@ -41,7 +42,7 @@ game.on((type, d) => {
     case 'end': audio.play('end'); audio.music(null); onEnd(d); break;
   }
 });
-view.onTap = key => { if (!game.over) game.place(key); };
+view.onTap = key => { if (!game.over && !game.demo) game.place(key); };
 
 function start() {
   audio.unlock(); audio.play('start'); audio.music('main');
@@ -49,7 +50,14 @@ function start() {
   lastTick = -1;
   game.start(hud.foundAll);
 }
-$('startBtn').onclick = start;
+const tutorial = new Tutorial({ game, view, audio, onFinish: mode => { if (mode === 'first') start(); else $('title').hidden = false; } });
+// 初めて遊ぶときは、先に遊び方を見せる
+$('startBtn').onclick = () => {
+  if (Tutorial.seen) return start();
+  audio.unlock(); audio.play('ui');
+  $('title').hidden = true; tutorial.open('first');
+};
+$('tutBtn').onclick = () => { audio.unlock(); audio.play('ui'); $('title').hidden = true; tutorial.open('review'); };
 document.querySelectorAll('[data-book]').forEach(b => b.onclick = () => { audio.unlock(); audio.play('ui'); hud.openBook(); });
 $('bookClose').onclick = () => { audio.play('ui'); $('book').hidden = true; };
 $('bookTabs').addEventListener('click', e => {

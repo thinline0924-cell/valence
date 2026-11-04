@@ -7,7 +7,7 @@
 import pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-ORDER = ['board', 'chem', 'sim', 'view', 'hud', 'audio', 'config', 'rank', 'main']
+ORDER = ['board', 'chem', 'sim', 'view', 'hud', 'audio', 'config', 'rank', 'tutorial', 'main']
 THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js'
 
 out = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'dist' / 'valence.html'

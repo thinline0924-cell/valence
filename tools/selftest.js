@@ -1,5 +1,5 @@
 // 画面なしでルールを動かし、反応や完成が起きるか・例外が出ないかを確かめる
-import { Game, exactValence, OPENING } from '../js/sim.js';
+import { Game, exactValence, OPENING, RULES } from '../js/sim.js';
 import { CELLS } from '../js/board.js';
 import { REACTIONS, NUCLEAR_LIST, SUBSTANCES, BUILDABLE } from '../js/chem.js';
 
@@ -115,6 +115,22 @@ for (const N of NUCLEAR_LIST) if (N.nucl) {
   for (const T of g.targets) check([...g.cells.values()].some(e => e.id === T.center && e.sub === T.R.in[0]), `target center on board ${T.R.id}`);
   const T = g.targets[0]; g.checkTarget(T.R.id, '0,0');
   check(T.done && hit === 1, 'target completes');
+}
+
+// 遊び方の見本:時計が進まず、決めた手順どおりに水ができるか
+{
+  const g = new Game(); g.startDemo(['O', 'H', 'H']);
+  g.demoAtom('O', '0,0'); g.demoAtom('H', '1,0'); g.demoAtom('H', '-1,0');
+  for (let i = 0; i < 60; i++) g.update(1 / 30);
+  check([...g.cells.values()].some(e => e.sub === 'H2O'), 'demo builds water');
+  check(g.time === RULES.time, 'demo clock does not run');
+}
+// 金属が出はじめても、酸素の割合が下がらないか
+{
+  const g = new Game(); g.start(new Set());
+  const share = rc => { g.reactCount = rc; g.frags.clear(); let o = 0; for (let i = 0; i < 6000; i++) if (g.pick() === 'O') o++; return o / 6000; };
+  const a = share(0), b = share(30);
+  check(b > 0.19 && b > a - 0.03, `oxygen share keeps up (${a.toFixed(2)} → ${b.toFixed(2)})`);
 }
 
 // 自動プレイ
